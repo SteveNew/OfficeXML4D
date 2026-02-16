@@ -1,0 +1,67 @@
+program Office4D.Tests;
+
+{$APPTYPE CONSOLE}
+
+{$STRONGLINKTYPES ON}
+
+uses
+  System.SysUtils,
+  DUnitX.Loggers.Console,
+  DUnitX.Loggers.Xml.NUnit,
+  DUnitX.TestFramework,
+  Office4D.Types in '..\Source\Core\Office4D.Types.pas',
+  Office4D.Errors in '..\Source\Core\Office4D.Errors.pas',
+  Office4D.Package in '..\Source\Core\Office4D.Package.pas',
+  Office4D.Relationships in '..\Source\Core\Office4D.Relationships.pas',
+  Office4D.Metadata in '..\Source\Common\Office4D.Metadata.pas',
+  Office4D.Word in '..\Source\Word\Office4D.Word.pas',
+  Office4D.Word.Document in '..\Source\Word\Office4D.Word.Document.pas',
+  Office4D.Excel in '..\Source\Excel\Office4D.Excel.pas',
+  Office4D.Excel.Workbook in '..\Source\Excel\Office4D.Excel.Workbook.pas',
+  Office4D.Tests.Package in 'Office4D.Tests.Package.pas',
+  Office4D.Tests.Relationships in 'Office4D.Tests.Relationships.pas',
+  Office4D.Tests.Metadata in 'Office4D.Tests.Metadata.pas',
+  Office4D.Tests.Word in 'Office4D.Tests.Word.pas',
+  Office4D.Tests.Word.Write in 'Office4D.Tests.Word.Write.pas',
+  Office4D.Tests.Excel in 'Office4D.Tests.Excel.pas',
+  Office4D.Tests.Excel.Write in 'Office4D.Tests.Excel.Write.pas';
+
+var
+  Runner: ITestRunner;
+  Results: IRunResults;
+  Logger: ITestLogger;
+  NUnitLogger: ITestLogger;
+
+begin
+  ReportMemoryLeaksOnShutdown := True;
+
+  try
+    TDUnitX.CheckCommandLine;
+
+    Runner := TDUnitX.CreateRunner;
+    Runner.UseRTTI := True;
+
+    Logger := TDUnitXConsoleLogger.Create(True);
+    Runner.AddLogger(Logger);
+
+    NUnitLogger := TDUnitXXMLNUnitFileLogger.Create(TDUnitX.Options.XMLOutputFile);
+    Runner.AddLogger(NUnitLogger);
+    Runner.FailsOnNoAsserts := False;
+
+    Results := Runner.Execute;
+
+    if not Results.AllPassed then
+      System.ExitCode := EXIT_ERRORS;
+
+    {$IFNDEF CI}
+    if TDUnitX.Options.ExitBehavior = TDUnitXExitBehavior.Pause then
+    begin
+      System.Write('Done.. press <Enter> key to quit.');
+      System.Readln;
+    end;
+    {$ENDIF}
+  except
+    on E: Exception do
+      System.Writeln(E.ClassName, ': ', E.Message);
+  end;
+end.
