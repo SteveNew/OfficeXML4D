@@ -7,12 +7,13 @@ uses
   System.DateUtils,
   System.IOUtils,
   DUnitX.TestFramework,
+  Office4D.Tests.Samples,
   Office4D.Metadata,
   Office4D.Package;
 
 type
   [TestFixture]
-  TMetadataTests = class
+  TMetadataTests = class(TOffice4DTests)
   private
     FParser: TMetadataParser;
 
@@ -32,8 +33,6 @@ type
       '<dcterms:modified>2026-01-20T14:45:00Z</dcterms:modified>' +
       '</cp:coreProperties>';
 
-    function GetSamplesPath: string;
-    function GetWordSamplePath: string;
   public
     [Setup]
     procedure Setup;
@@ -75,16 +74,6 @@ type
 implementation
 
 { TMetadataTests }
-
-function TMetadataTests.GetSamplesPath: string;
-begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
-end;
-
-function TMetadataTests.GetWordSamplePath: string;
-begin
-  Result := TPath.Combine(GetSamplesPath, 'Word\simple_word.docx');
-end;
 
 procedure TMetadataTests.Setup;
 begin

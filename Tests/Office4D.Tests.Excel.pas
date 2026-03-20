@@ -6,16 +6,15 @@ uses
   System.SysUtils,
   System.IOUtils,
   DUnitX.TestFramework,
+  Office4D.Tests.Samples,
   Office4D.Excel;
 
 type
   [TestFixture]
-  TExcelReadTests = class
+  TExcelReadTests = class(TOffice4DTests)
   private
     FWorkbook: IExcelWorkbook;
 
-    function GetSamplesPath: string;
-    function GetExcelSamplePath: string;
   public
     [Setup]
     procedure Setup;
@@ -115,12 +114,11 @@ type
   end;
 
   [TestFixture]
-  TExcelFormulaTests = class
+  TExcelFormulaTests = class(TOffice4DTests)
   private
     FWorkbook: IExcelWorkbook;
     FTempFile: string;
 
-    function GetSamplesPath: string;
   public
     [Setup]
     procedure Setup;
@@ -156,16 +154,6 @@ uses
   Office4D.Errors;
 
 { TExcelReadTests }
-
-function TExcelReadTests.GetSamplesPath: string;
-begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
-end;
-
-function TExcelReadTests.GetExcelSamplePath: string;
-begin
-  Result := TPath.Combine(GetSamplesPath, 'Excel\simple_excel.xlsx');
-end;
 
 procedure TExcelReadTests.Setup;
 begin
@@ -240,7 +228,7 @@ procedure TExcelReadTests.Cell_NumberValue_ReturnsNumber;
 begin
   FWorkbook.LoadFromFile(GetExcelSamplePath);
 
-  var Value := FWorkbook.Sheets[0].Cell['B1'].AsFloat;
+  var Value: Double := FWorkbook.Sheets[0].Cell['B1'].AsFloat;
 
   Assert.AreEqual(Double(42), Value);
 end;
@@ -342,7 +330,7 @@ end;
 procedure TExcelAdvancedTests.Cell_DateValue_ReturnsDateTime;
 begin
   var Sheet := FWorkbook.AddSheet('Sheet1');
-  var TestDate := EncodeDate(2024, 6, 15);
+  var TestDate: TDateTime := EncodeDate(2024, 6, 15);
   Sheet.Cell['A1'].AsDateTime := TestDate;
 
   Assert.AreEqual(TestDate, Sheet.Cell['A1'].AsDateTime);
@@ -388,11 +376,6 @@ begin
 end;
 
 { TExcelFormulaTests }
-
-function TExcelFormulaTests.GetSamplesPath: string;
-begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
-end;
 
 procedure TExcelFormulaTests.Setup;
 begin

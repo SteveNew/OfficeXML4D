@@ -7,17 +7,16 @@ uses
   System.IOUtils,
   System.Classes,
   DUnitX.TestFramework,
+  Office4D.Tests.Samples,
   Office4D.Excel;
 
 type
   [TestFixture]
-  TExcelWriteTests = class
+  TExcelWriteTests = class(TOffice4DTests)
   private
     FWorkbook: IExcelWorkbook;
     FTempFile: string;
 
-    function GetSamplesPath: string;
-    function GetExcelSamplePath: string;
   public
     [Setup]
     procedure Setup;
@@ -174,16 +173,6 @@ uses
   Office4D.Package;
 
 { TExcelWriteTests }
-
-function TExcelWriteTests.GetSamplesPath: string;
-begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
-end;
-
-function TExcelWriteTests.GetExcelSamplePath: string;
-begin
-  Result := TPath.Combine(GetSamplesPath, 'Excel\simple_excel.xlsx');
-end;
 
 procedure TExcelWriteTests.Setup;
 begin

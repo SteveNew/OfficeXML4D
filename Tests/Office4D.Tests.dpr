@@ -18,6 +18,7 @@ uses
   Office4D.Word.Document in '..\Source\Word\Office4D.Word.Document.pas',
   Office4D.Excel in '..\Source\Excel\Office4D.Excel.pas',
   Office4D.Excel.Workbook in '..\Source\Excel\Office4D.Excel.Workbook.pas',
+  Office4D.Tests.Samples in 'Office4D.Tests.Samples.pas',
   Office4D.Tests.Package in 'Office4D.Tests.Package.pas',
   Office4D.Tests.Relationships in 'Office4D.Tests.Relationships.pas',
   Office4D.Tests.Metadata in 'Office4D.Tests.Metadata.pas',
