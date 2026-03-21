@@ -1539,7 +1539,10 @@ begin
     end;
   end;
 
-  const CellMatches = TRegEx.Matches(Xml, '<c\s+r="([A-Z]+\d+)"(?:\s+s="(\d+)")?(?:\s+t="([^"]*)")?[^>]*>(?:<f>([^<]*)</f>)?.*?<v>([^<]*)</v>.*?</c>', [roIgnoreCase, roSingleLine]);
+  // Match only non-self-closing <c> elements (those with a <v> value). Self-closing
+  // <c r=".."/> tags represent empty cells and are excluded via (?!/) before the closing >.
+  // (?:(?!</c>).)* prevents the lazy match from crossing into adjacent cells.
+  const CellMatches = TRegEx.Matches(Xml, '<c\s+r="([A-Z]+\d+)"(?:\s+s="(\d+)")?(?:\s+t="([^"]*)")?[^>]*(?<!/)>(?:<f>([^<]*)</f>)?(?:(?!</c>).)*<v>([^<]*)</v>.*?</c>', [roIgnoreCase, roSingleLine]);
   for var Match in CellMatches do
   begin
     if Match.Groups.Count > 5 then
@@ -1604,6 +1607,11 @@ begin
       end;
     end;
   end;
+
+  const MergeMatches = TRegEx.Matches(Xml, '<mergeCell\s+ref="([^"]+)"', [roIgnoreCase]);
+  for var MergeMatch in MergeMatches do
+    if MergeMatch.Groups.Count > 1 then
+      Sheet.MergeCells(MergeMatch.Groups[1].Value);
 end;
 
 function TExcelWorkbook.GetSheetCount: Integer;
