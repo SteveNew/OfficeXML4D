@@ -153,8 +153,9 @@ type
   TExcelLayoutTests = class(TOffice4DTests)
   private
     Const
-      Yellow = $FFFF00;  // RGB(255, 255, 0)   - fill: FFFFFF00
-      Green  = $92D050;  // RGB(146, 208,  80) - fill: FF92D050
+      Yellow        = $FFFF00;  // RGB(255, 255, 0)   - fill: FFFFFF00
+      Green         = $92D050;  // RGB(146, 208,  80) - fill: FF92D050
+      IndexedYellow = $FFFF00;  // RGB(255, 255, 0)   - fill: fgColor indexed="13" (OOXML default palette)
     Var
       FWorkbook: IExcelWorkbook;
       FTempFile: string;
@@ -177,6 +178,12 @@ type
 
     [Test]
     procedure Preserve_CellBackgroundColor;
+
+    [Test]
+    procedure Reads_IndexedColor;
+
+    [Test]
+    procedure Preserve_IndexedColor;
   end;
 
 implementation
@@ -598,6 +605,34 @@ begin
 
   Assert.AreEqual(Green,  Sheet.Cell['B1'].BackgroundColor,'Layout!B1');
   Assert.AreEqual(Yellow, Sheet.Cell['A2'].BackgroundColor,'Layout!A2');
+end;
+
+procedure TExcelLayoutTests.Reads_IndexedColor;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+
+  var Sheet := FWorkbook.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  // A5 has style 2: fill with fgColor indexed="13", which maps to yellow ($FFFF00)
+  // in the OOXML default indexed colour palette.
+  Assert.AreEqual(IndexedYellow, Sheet.Cell['A5'].BackgroundColor, 'Layout!A5 indexed colour');
+end;
+
+procedure TExcelLayoutTests.Preserve_IndexedColor;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.SaveToFile(FTempFile);
+
+  var Workbook2 := TExcelWorkbookFactory.Create;
+  Workbook2.LoadFromFile(FTempFile);
+
+  var Sheet := Workbook2.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  // After a save/reload cycle, the indexed colour on A5 should be preserved
+  // (written as fgColor rgb= since the library always saves in modern format).
+  Assert.AreEqual(IndexedYellow, Sheet.Cell['A5'].BackgroundColor, 'Layout!A5 indexed colour');
 end;
 
 initialization
