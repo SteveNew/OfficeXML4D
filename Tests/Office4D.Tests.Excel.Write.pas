@@ -213,7 +213,7 @@ end;
 
 procedure TExcelWriteTests.RoundTrip_LoadModifySave_PreservesContent;
 begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.LoadFromFile(GetExcelSimpleSamplePath);
   FWorkbook.Sheets[0].Cell['C1'].AsString := 'Added by test';
 
   FWorkbook.SaveToFile(FTempFile);
@@ -421,7 +421,7 @@ end;
 
 procedure TExcelWriteTests.LoadFromStream_ReadsFromStream;
 begin
-  var Stream := TFileStream.Create(GetExcelSamplePath, fmOpenRead or fmShareDenyWrite);
+  var Stream := TFileStream.Create(GetExcelSimpleSamplePath, fmOpenRead or fmShareDenyWrite);
   try
     const Workbook = TExcelWorkbookFactory.Create;
     Workbook.LoadFromStream(Stream);

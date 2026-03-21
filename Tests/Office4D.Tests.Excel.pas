@@ -167,7 +167,7 @@ end;
 
 procedure TExcelReadTests.LoadFromFile_ValidXlsx_LoadsWorkbook;
 begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.LoadFromFile(GetExcelSimpleSamplePath);
 
   Assert.IsTrue(FWorkbook.SheetCount > 0);
 end;
@@ -185,14 +185,14 @@ end;
 
 procedure TExcelReadTests.SheetCount_AfterLoad_ReturnsCount;
 begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.LoadFromFile(GetExcelSimpleSamplePath);
 
   Assert.AreEqual(1, FWorkbook.SheetCount);
 end;
 
 procedure TExcelReadTests.SheetByIndex_ValidIndex_ReturnsSheet;
 begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.LoadFromFile(GetExcelSimpleSamplePath);
 
   var Sheet := FWorkbook.Sheets[0];
 
@@ -201,7 +201,7 @@ end;
 
 procedure TExcelReadTests.SheetByName_ValidName_ReturnsSheet;
 begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.LoadFromFile(GetExcelSimpleSamplePath);
 
   var Sheet := FWorkbook.SheetByName('Sheet1');
 
@@ -210,14 +210,14 @@ end;
 
 procedure TExcelReadTests.Sheet_GetName_ReturnsSheetName;
 begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.LoadFromFile(GetExcelSimpleSamplePath);
 
   Assert.AreEqual('Sheet1', FWorkbook.Sheets[0].Name);
 end;
 
 procedure TExcelReadTests.Cell_StringValue_ReturnsString;
 begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.LoadFromFile(GetExcelSimpleSamplePath);
 
   var Value := FWorkbook.Sheets[0].Cell['A1'].AsString;
 
@@ -226,7 +226,7 @@ end;
 
 procedure TExcelReadTests.Cell_NumberValue_ReturnsNumber;
 begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.LoadFromFile(GetExcelSimpleSamplePath);
 
   var Value: Double := FWorkbook.Sheets[0].Cell['B1'].AsFloat;
 
@@ -235,7 +235,7 @@ end;
 
 procedure TExcelReadTests.Metadata_LastModifiedBy_ReturnsAuthor;
 begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.LoadFromFile(GetExcelSimpleSamplePath);
 
   Assert.AreEqual('Marco Geuze', FWorkbook.Metadata.LastModifiedBy);
 end;
@@ -392,28 +392,28 @@ end;
 
 procedure TExcelFormulaTests.Cell_WithFormula_HasFormulaIsTrue;
 begin
-  FWorkbook.LoadFromFile(TPath.Combine(GetSamplesPath, 'Excel\formula_excel.xlsx'));
+  FWorkbook.LoadFromFile(GetExcelFormulaSamplePath);
 
   Assert.IsTrue(FWorkbook.Sheets[0].Cell['C1'].HasFormula);
 end;
 
 procedure TExcelFormulaTests.Cell_WithFormula_ReturnsFormulaString;
 begin
-  FWorkbook.LoadFromFile(TPath.Combine(GetSamplesPath, 'Excel\formula_excel.xlsx'));
+  FWorkbook.LoadFromFile(GetExcelFormulaSamplePath);
 
   Assert.AreEqual('A1+B1', FWorkbook.Sheets[0].Cell['C1'].Formula);
 end;
 
 procedure TExcelFormulaTests.Cell_WithFormula_ReturnsCalculatedValue;
 begin
-  FWorkbook.LoadFromFile(TPath.Combine(GetSamplesPath, 'Excel\formula_excel.xlsx'));
+  FWorkbook.LoadFromFile(GetExcelFormulaSamplePath);
 
   Assert.AreEqual(Double(52), FWorkbook.Sheets[0].Cell['C1'].AsFloat);
 end;
 
 procedure TExcelFormulaTests.RoundTrip_Formula_PreservesFormula;
 begin
-  FWorkbook.LoadFromFile(TPath.Combine(GetSamplesPath, 'Excel\formula_excel.xlsx'));
+  FWorkbook.LoadFromFile(GetExcelFormulaSamplePath);
   FWorkbook.SaveToFile(FTempFile);
 
   var Workbook2 := TExcelWorkbookFactory.Create;

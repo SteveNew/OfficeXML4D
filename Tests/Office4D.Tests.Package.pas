@@ -80,7 +80,7 @@ end;
 
 procedure TPackageTests.Open_ValidXlsx_OpensSuccessfully;
 begin
-  FPackage.Open(GetExcelSamplePath);
+  FPackage.Open(GetExcelSimpleSamplePath);
 
   Assert.IsTrue(FPackage.IsOpen);
 end;
