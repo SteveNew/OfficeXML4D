@@ -184,6 +184,12 @@ type
 
     [Test]
     procedure Preserve_IndexedColor;
+
+    [Test]
+    procedure Reads_ColumnWidth;
+
+    [Test]
+    procedure Preserve_ColumnWidth;
   end;
 
 implementation
@@ -633,6 +639,32 @@ begin
   // After a save/reload cycle, the indexed colour on A5 should be preserved
   // (written as fgColor rgb= since the library always saves in modern format).
   Assert.AreEqual(IndexedYellow, Sheet.Cell['A5'].BackgroundColor, 'Layout!A5 indexed colour');
+end;
+
+procedure TExcelLayoutTests.Reads_ColumnWidth;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+
+  var Sheet := FWorkbook.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  Assert.AreEqual(Double(20), Sheet.GetColumnWidth('B'), 'Layout col B width');
+  Assert.AreEqual(Double(30), Sheet.GetColumnWidth('C'), 'Layout col C width');
+end;
+
+procedure TExcelLayoutTests.Preserve_ColumnWidth;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.SaveToFile(FTempFile);
+
+  var Workbook2 := TExcelWorkbookFactory.Create;
+  Workbook2.LoadFromFile(FTempFile);
+
+  var Sheet := Workbook2.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  Assert.AreEqual(Double(20), Sheet.GetColumnWidth('B'), 'Layout col B width');
+  Assert.AreEqual(Double(30), Sheet.GetColumnWidth('C'), 'Layout col C width');
 end;
 
 initialization
