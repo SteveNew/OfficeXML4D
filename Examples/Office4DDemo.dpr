@@ -46,7 +46,6 @@ begin
   Run := Para.AddRun('GitHub Repository');
   Run.Hyperlink := 'https://github.com/example/office4d';
   Run.Underline := True;
-  Para.AddRun(' ');
   Para.AddRun(' for more information.');
 
   // Empty line
