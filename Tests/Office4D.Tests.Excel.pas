@@ -242,7 +242,7 @@ begin
 
   var Value := FWorkbook.Sheets[0].Cell['B1'].AsFloat;
 
-  Assert.AreEqual(Double(42), Value);
+  Assert.AreEqual<Double>(42, Value);
 end;
 
 procedure TExcelReadTests.Metadata_LastModifiedBy_ReturnsAuthor;
@@ -345,7 +345,7 @@ begin
   var TestDate := EncodeDate(2024, 6, 15);
   Sheet.Cell['A1'].AsDateTime := TestDate;
 
-  Assert.AreEqual(TestDate, Sheet.Cell['A1'].AsDateTime);
+  Assert.AreEqual<TDateTime>(TestDate, Sheet.Cell['A1'].AsDateTime);
 end;
 
 procedure TExcelAdvancedTests.Cell_AsDateTime_ReturnsDate;
