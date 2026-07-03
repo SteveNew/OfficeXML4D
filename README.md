@@ -247,8 +247,9 @@ Source/
   Common/      - Metadata, shared interfaces
   Word/        - Word document implementation
   Excel/       - Excel workbook implementation
-Tests/         - DUnitX test suite (135 tests)
-Samples/       - Sample documents for testing
+Tests/
+  Source/      - DUnitX test suite
+  Samples/     - Sample documents for testing
 Examples/      - Demo application
 ```
 

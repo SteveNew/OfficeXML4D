@@ -18,7 +18,7 @@ implementation
 
 function TOffice4DTests.GetSamplesPath: string;
 begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\Samples'));
+  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
 end;
 
 function TOffice4DTests.GetWordSamplePath: string;

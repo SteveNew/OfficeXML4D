@@ -143,15 +143,16 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
-        <DCCReference Include="..\Source\Core\Office4D.Types.pas"/>
-        <DCCReference Include="..\Source\Core\Office4D.Errors.pas"/>
-        <DCCReference Include="..\Source\Core\Office4D.Package.pas"/>
-        <DCCReference Include="..\Source\Core\Office4D.Relationships.pas"/>
-        <DCCReference Include="..\Source\Common\Office4D.Metadata.pas"/>
-        <DCCReference Include="..\Source\Word\Office4D.Word.pas"/>
-        <DCCReference Include="..\Source\Word\Office4D.Word.Document.pas"/>
-        <DCCReference Include="..\Source\Excel\Office4D.Excel.pas"/>
-        <DCCReference Include="..\Source\Excel\Office4D.Excel.Workbook.pas"/>
+        <DCCReference Include="..\..\Source\Core\Office4D.Types.pas"/>
+        <DCCReference Include="..\..\Source\Core\Office4D.Errors.pas"/>
+        <DCCReference Include="..\..\Source\Core\Office4D.Package.pas"/>
+        <DCCReference Include="..\..\Source\Core\Office4D.Relationships.pas"/>
+        <DCCReference Include="..\..\Source\Common\Office4D.Metadata.pas"/>
+        <DCCReference Include="..\..\Source\Word\Office4D.Word.pas"/>
+        <DCCReference Include="..\..\Source\Word\Office4D.Word.Document.pas"/>
+        <DCCReference Include="..\..\Source\Excel\Office4D.Excel.pas"/>
+        <DCCReference Include="..\..\Source\Excel\Office4D.Excel.Workbook.pas"/>
+        <DCCReference Include="Office4D.Tests.Samples.pas"/>
         <DCCReference Include="Office4D.Tests.Package.pas"/>
         <DCCReference Include="Office4D.Tests.Relationships.pas"/>
         <DCCReference Include="Office4D.Tests.Metadata.pas"/>
