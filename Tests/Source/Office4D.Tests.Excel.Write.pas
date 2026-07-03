@@ -164,6 +164,12 @@ type
 
     [Test]
     procedure RoundTrip_CombinedFormatting_PreservesAll;
+
+    [Test]
+    procedure SaveToFile_EmptyStringCell_WritesNoInvalidSharedStringIndex;
+
+    [Test]
+    procedure RoundTrip_EmptyStringCell_PreservesAdjacentValues;
   end;
 
 implementation
@@ -1002,6 +1008,45 @@ begin
   Assert.AreEqual(Ord(TExcelVAlign.Bottom), Ord(Cell.VAlign));
   Assert.IsTrue(Cell.WrapText, 'Should have wrapText');
   Assert.AreEqual(Double(30), Workbook2.Sheets[0].GetRowHeight(1), 0.01);
+end;
+
+procedure TExcelWriteTests.SaveToFile_EmptyStringCell_WritesNoInvalidSharedStringIndex;
+begin
+  const Sheet = FWorkbook.AddSheet('Sheet1');
+  Sheet.Cell['A1'].AsString := 'Filled';
+  Sheet.Cell['B1'].AsString := '';
+  Sheet.Cell['C1'].AsString := '';
+  Sheet.Cell['C1'].Bold := True;
+
+  FWorkbook.SaveToFile(FTempFile);
+
+  var Package := TOXMLPackage.Create;
+  try
+    Package.Open(FTempFile);
+    const SheetXml = Package.GetPartContent('xl/worksheets/sheet1.xml');
+    Assert.IsFalse(Pos('<v>-1</v>', SheetXml) > 0, 'Empty string cells should not reference sharedStrings index -1');
+    Assert.IsFalse(Pos('r="B1"', SheetXml) > 0, 'Unstyled empty string cell should be omitted');
+    Assert.IsTrue(Pos('r="C1"', SheetXml) > 0, 'Styled empty string cell should be written');
+    Assert.IsFalse(Pos('r="C1" s="1" t="s"', SheetXml) > 0, 'Styled empty string cell should not be a shared string cell');
+  finally
+    Package.Free;
+  end;
+end;
+
+procedure TExcelWriteTests.RoundTrip_EmptyStringCell_PreservesAdjacentValues;
+begin
+  const Sheet = FWorkbook.AddSheet('Sheet1');
+  Sheet.Cell['A1'].AsString := 'Left';
+  Sheet.Cell['B1'].AsString := '';
+  Sheet.Cell['C1'].AsString := 'Right';
+
+  FWorkbook.SaveToFile(FTempFile);
+
+  const Workbook2 = TExcelWorkbookFactory.Create;
+  Workbook2.LoadFromFile(FTempFile);
+  Assert.AreEqual('Left', Workbook2.Sheets[0].Cell['A1'].AsString);
+  Assert.AreEqual('', Workbook2.Sheets[0].Cell['B1'].AsString);
+  Assert.AreEqual('Right', Workbook2.Sheets[0].Cell['C1'].AsString);
 end;
 
 initialization

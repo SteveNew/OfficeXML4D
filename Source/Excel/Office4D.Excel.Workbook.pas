@@ -967,8 +967,18 @@ begin
                 end;
               TCellType.StringValue:
                 begin
-                  const StrIdx = GetSharedStringIndex(SharedStrings, Cell.GetAsString);
-                  SB.Append('<c r="' + CellPair.Key + '"' + StyleAttr + ' t="s"><v>' + IntToStr(StrIdx) + '</v></c>');
+                  // Empty strings are excluded from sharedStrings (see BuildSharedStrings), so a
+                  // lookup would yield the invalid index -1. Write them as value-less cells instead.
+                  if Cell.GetAsString = '' then
+                  begin
+                    if StyleIdx > 0 then
+                      SB.Append('<c r="' + CellPair.Key + '"' + StyleAttr + '/>');
+                  end
+                  else
+                  begin
+                    const StrIdx = GetSharedStringIndex(SharedStrings, Cell.GetAsString);
+                    SB.Append('<c r="' + CellPair.Key + '"' + StyleAttr + ' t="s"><v>' + IntToStr(StrIdx) + '</v></c>');
+                  end;
                 end;
               TCellType.Boolean:
                 begin
