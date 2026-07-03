@@ -7,17 +7,16 @@ uses
   System.IOUtils,
   System.Classes,
   DUnitX.TestFramework,
+  Office4D.Tests.Samples,
   Office4D.Word;
 
 type
   [TestFixture]
-  TWordWriteTests = class
+  TWordWriteTests = class(TOffice4DTests)
   private
     FDoc: IWordDocument;
     FTempFile: string;
 
-    function GetSamplesPath: string;
-    function GetWordSamplePath: string;
   public
     [Setup]
     procedure Setup;
@@ -165,16 +164,6 @@ uses
   Office4D.Package;
 
 { TWordWriteTests }
-
-function TWordWriteTests.GetSamplesPath: string;
-begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
-end;
-
-function TWordWriteTests.GetWordSamplePath: string;
-begin
-  Result := TPath.Combine(GetSamplesPath, 'Word\simple_word.docx');
-end;
 
 procedure TWordWriteTests.Setup;
 begin

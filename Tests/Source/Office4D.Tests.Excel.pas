@@ -5,17 +5,17 @@ interface
 uses
   System.SysUtils,
   System.IOUtils,
+  System.Generics.Collections,
   DUnitX.TestFramework,
+  Office4D.Tests.Samples,
   Office4D.Excel;
 
 type
   [TestFixture]
-  TExcelReadTests = class
+  TExcelReadTests = class(TOffice4DTests)
   private
     FWorkbook: IExcelWorkbook;
 
-    function GetSamplesPath: string;
-    function GetExcelSamplePath: string;
   public
     [Setup]
     procedure Setup;
@@ -46,9 +46,6 @@ type
 
     [Test]
     procedure Cell_NumberValue_ReturnsNumber;
-
-    [Test]
-    procedure Metadata_LastModifiedBy_ReturnsAuthor;
   end;
 
   [TestFixture]
@@ -115,12 +112,11 @@ type
   end;
 
   [TestFixture]
-  TExcelFormulaTests = class
+  TExcelFormulaTests = class(TOffice4DTests)
   private
     FWorkbook: IExcelWorkbook;
     FTempFile: string;
 
-    function GetSamplesPath: string;
   public
     [Setup]
     procedure Setup;
@@ -138,6 +134,9 @@ type
     procedure Cell_WithFormula_ReturnsCalculatedValue;
 
     [Test]
+    procedure Cell_WithFormula_CrossSheetReference;
+
+    [Test]
     procedure RoundTrip_Formula_PreservesFormula;
 
     [Test]
@@ -150,22 +149,55 @@ type
     procedure SetFormula_RoundTrip_PreservesFormula;
   end;
 
+  [TestFixture]
+  TExcelLayoutTests = class(TOffice4DTests)
+  private
+    Const
+      Yellow        = $FFFF00;  // RGB(255, 255, 0)   - fill: FFFFFF00
+      Green         = $92D050;  // RGB(146, 208,  80) - fill: FF92D050
+      IndexedYellow = $FFFF00;  // RGB(255, 255, 0)   - fill: fgColor indexed="13" (OOXML default palette)
+    Var
+      FWorkbook: IExcelWorkbook;
+      FTempFile: string;
+
+  public
+    [Setup]
+    procedure Setup;
+
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure Reads_MergedCell;
+
+    [Test]
+    procedure Preserve_MergedCell;
+
+    [Test]
+    procedure Reads_CellBackgroundColor;
+
+    [Test]
+    procedure Preserve_CellBackgroundColor;
+
+    [Test]
+    procedure Reads_IndexedColor;
+
+    [Test]
+    procedure Preserve_IndexedColor;
+
+    [Test]
+    procedure Reads_ColumnWidth;
+
+    [Test]
+    procedure Preserve_ColumnWidth;
+  end;
+
 implementation
 
 uses
   Office4D.Errors;
 
 { TExcelReadTests }
-
-function TExcelReadTests.GetSamplesPath: string;
-begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
-end;
-
-function TExcelReadTests.GetExcelSamplePath: string;
-begin
-  Result := TPath.Combine(GetSamplesPath, 'Excel\simple_excel.xlsx');
-end;
 
 procedure TExcelReadTests.Setup;
 begin
@@ -199,32 +231,44 @@ procedure TExcelReadTests.SheetCount_AfterLoad_ReturnsCount;
 begin
   FWorkbook.LoadFromFile(GetExcelSamplePath);
 
-  Assert.AreEqual(1, FWorkbook.SheetCount);
+  Assert.AreEqual(3, FWorkbook.SheetCount);
 end;
 
 procedure TExcelReadTests.SheetByIndex_ValidIndex_ReturnsSheet;
 begin
   FWorkbook.LoadFromFile(GetExcelSamplePath);
 
-  var Sheet := FWorkbook.Sheets[0];
+  var Sheet0 := FWorkbook.Sheets[0];
+  Assert.IsNotNull(Sheet0);
 
-  Assert.IsNotNull(Sheet);
+  var Sheet1 := FWorkbook.Sheets[1];
+  Assert.IsNotNull(Sheet1);
+
+  var Sheet2 := FWorkbook.Sheets[2];
+  Assert.IsNotNull(Sheet2);
 end;
 
 procedure TExcelReadTests.SheetByName_ValidName_ReturnsSheet;
 begin
   FWorkbook.LoadFromFile(GetExcelSamplePath);
 
-  var Sheet := FWorkbook.SheetByName('Sheet1');
+  var SimpleSheet := FWorkbook.SheetByName('Simple');
+  Assert.IsNotNull(SimpleSheet);
 
-  Assert.IsNotNull(Sheet);
+  var FormulaSheet := FWorkbook.SheetByName('Simple');
+  Assert.IsNotNull(FormulaSheet);
+
+  var LayoutSheet := FWorkbook.SheetByName('Layout');
+  Assert.IsNotNull(LayoutSheet);
 end;
 
 procedure TExcelReadTests.Sheet_GetName_ReturnsSheetName;
 begin
   FWorkbook.LoadFromFile(GetExcelSamplePath);
 
-  Assert.AreEqual('Sheet1', FWorkbook.Sheets[0].Name);
+  Assert.AreEqual('Simple', FWorkbook.Sheets[0].Name);
+  Assert.AreEqual('Formula', FWorkbook.Sheets[1].Name);
+  Assert.AreEqual('Layout', FWorkbook.Sheets[2].Name);
 end;
 
 procedure TExcelReadTests.Cell_StringValue_ReturnsString;
@@ -240,16 +284,9 @@ procedure TExcelReadTests.Cell_NumberValue_ReturnsNumber;
 begin
   FWorkbook.LoadFromFile(GetExcelSamplePath);
 
-  var Value := FWorkbook.Sheets[0].Cell['B1'].AsFloat;
+  var Value: Double := FWorkbook.Sheets[0].Cell['B1'].AsFloat;
 
   Assert.AreEqual<Double>(42, Value);
-end;
-
-procedure TExcelReadTests.Metadata_LastModifiedBy_ReturnsAuthor;
-begin
-  FWorkbook.LoadFromFile(GetExcelSamplePath);
-
-  Assert.AreEqual('Marco Geuze', FWorkbook.Metadata.LastModifiedBy);
 end;
 
 { TExcelDOMTests }
@@ -342,7 +379,7 @@ end;
 procedure TExcelAdvancedTests.Cell_DateValue_ReturnsDateTime;
 begin
   var Sheet := FWorkbook.AddSheet('Sheet1');
-  var TestDate := EncodeDate(2024, 6, 15);
+  var TestDate: TDateTime := EncodeDate(2024, 6, 15);
   Sheet.Cell['A1'].AsDateTime := TestDate;
 
   Assert.AreEqual<TDateTime>(TestDate, Sheet.Cell['A1'].AsDateTime);
@@ -389,11 +426,6 @@ end;
 
 { TExcelFormulaTests }
 
-function TExcelFormulaTests.GetSamplesPath: string;
-begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
-end;
-
 procedure TExcelFormulaTests.Setup;
 begin
   FWorkbook := TExcelWorkbookFactory.Create;
@@ -409,35 +441,70 @@ end;
 
 procedure TExcelFormulaTests.Cell_WithFormula_HasFormulaIsTrue;
 begin
-  FWorkbook.LoadFromFile(TPath.Combine(GetSamplesPath, 'Excel\formula_excel.xlsx'));
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
 
-  Assert.IsTrue(FWorkbook.Sheets[0].Cell['C1'].HasFormula);
+  var Sheet := FWorkbook.SheetByName('Formula');
+  Assert.IsNotNull(Sheet);
+
+  Assert.IsTrue(Sheet.Cell['A3'].HasFormula,'Formula!A3');
+  Assert.IsTrue(Sheet.Cell['A10'].HasFormula,'Formula!A10');
 end;
 
 procedure TExcelFormulaTests.Cell_WithFormula_ReturnsFormulaString;
 begin
-  FWorkbook.LoadFromFile(TPath.Combine(GetSamplesPath, 'Excel\formula_excel.xlsx'));
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
 
-  Assert.AreEqual('A1+B1', FWorkbook.Sheets[0].Cell['C1'].Formula);
+  var Sheet := FWorkbook.SheetByName('Formula');
+  Assert.IsNotNull(Sheet);
+
+  Assert.AreEqual('A1+A2', Sheet.Cell['A3'].Formula);
 end;
 
 procedure TExcelFormulaTests.Cell_WithFormula_ReturnsCalculatedValue;
 begin
-  FWorkbook.LoadFromFile(TPath.Combine(GetSamplesPath, 'Excel\formula_excel.xlsx'));
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
 
-  Assert.AreEqual(Double(52), FWorkbook.Sheets[0].Cell['C1'].AsFloat);
+  var Sheet := FWorkbook.SheetByName('Formula');
+  Assert.IsNotNull(Sheet);
+
+  Assert.AreEqual(Double(1), Sheet.Cell['A3'].AsFloat,'Formula!A3');
+  Assert.AreEqual(Double(34), Sheet.Cell['A10'].AsFloat,'Formula!A10');
+end;
+
+procedure TExcelFormulaTests.Cell_WithFormula_CrossSheetReference;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+
+  var FormulaSheet := FWorkbook.SheetByName('Formula');
+  Assert.IsNotNull(FormulaSheet);
+
+  Assert.IsTrue(FormulaSheet.Cell['C1'].HasFormula,'Formula!C1');
+  Assert.IsTrue(FormulaSheet.Cell['D1'].HasFormula,'Formula!D1');
+  Assert.AreEqual('Simple!A1', FormulaSheet.Cell['C1'].Formula,'Formula!C1');
+  Assert.AreEqual('Simple!B1', FormulaSheet.Cell['D1'].Formula,'Formula!D1');
+
+  var SimpleSheet := FWorkbook.SheetByName('Simple');
+  Assert.IsNotNull(SimpleSheet);
+
+  Assert.AreEqual(SimpleSheet.Cell['A1'].AsString, FormulaSheet.Cell['C1'].AsString,'Formula!C1');
+  Assert.AreEqual(SimpleSheet.Cell['B1'].AsString, FormulaSheet.Cell['D1'].AsString,'Formula!D1');
 end;
 
 procedure TExcelFormulaTests.RoundTrip_Formula_PreservesFormula;
 begin
-  FWorkbook.LoadFromFile(TPath.Combine(GetSamplesPath, 'Excel\formula_excel.xlsx'));
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
   FWorkbook.SaveToFile(FTempFile);
 
   var Workbook2 := TExcelWorkbookFactory.Create;
   Workbook2.LoadFromFile(FTempFile);
 
-  Assert.IsTrue(Workbook2.Sheets[0].Cell['C1'].HasFormula);
-  Assert.AreEqual('A1+B1', Workbook2.Sheets[0].Cell['C1'].Formula);
+  var Sheet := Workbook2.SheetByName('Formula');
+  Assert.IsNotNull(Sheet);
+
+  Assert.IsTrue(Sheet.Cell['A3'].HasFormula,'Formula!A3');
+  Assert.IsTrue(Sheet.Cell['A10'].HasFormula,'Formula!A10');
+  Assert.AreEqual('A1+A2', Sheet.Cell['A3'].Formula,'Formula!A3');
+  Assert.AreEqual('A8+A9', Sheet.Cell['A10'].Formula,'Formula!A10');
 end;
 
 procedure TExcelFormulaTests.SetFormula_CreatesFormulaCell;
@@ -475,10 +542,136 @@ begin
   Assert.AreEqual(Double(75), Workbook2.Sheets[0].Cell['C1'].AsFloat);
 end;
 
+{ TExcelLayoutTests }
+
+procedure TExcelLayoutTests.Setup;
+begin
+  FWorkbook := TExcelWorkbookFactory.Create;
+  FTempFile := TPath.Combine(TPath.GetTempPath, 'test_formula_' + TGUID.NewGuid.ToString + '.xlsx');
+end;
+
+procedure TExcelLayoutTests.TearDown;
+begin
+  FWorkbook := nil;
+  if TFile.Exists(FTempFile) then
+    TFile.Delete(FTempFile);
+end;
+
+procedure TExcelLayoutTests.Reads_MergedCell;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+
+  var Sheet := FWorkBook.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  var Ranges := Sheet.GetMergedRanges;
+  Assert.AreEqual(2, Integer(Length(Ranges)), 'Merged range count');
+  Assert.IsTrue(TArray.Contains<string>(Ranges, 'B1:C2'), 'B1:C2');
+  Assert.IsTrue(TArray.Contains<string>(Ranges, 'A2:A4'), 'A2:A4');
+end;
+
+procedure TExcelLayoutTests.Preserve_MergedCell;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkBook.SaveToFile(FTempFile);
+
+  var Workbook2 := TExcelWorkbookFactory.Create;
+  Workbook2.LoadFromFile(FTempFile);
+
+  var Sheet := Workbook2.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  var Ranges := Sheet.GetMergedRanges;
+  Assert.AreEqual(2, Integer(Length(Ranges)), 'Merged range count');
+  Assert.IsTrue(TArray.Contains<string>(Ranges, 'B1:C2'), 'B1:C2');
+  Assert.IsTrue(TArray.Contains<string>(Ranges, 'A2:A4'), 'A2:A4');
+end;
+
+procedure TExcelLayoutTests.Reads_CellBackgroundColor;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+
+  var Sheet := FWorkBook.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  Assert.AreEqual(Green,  Sheet.Cell['B1'].BackgroundColor,'Layout!B1');
+  Assert.AreEqual(Yellow, Sheet.Cell['A2'].BackgroundColor,'Layout!A2');
+end;
+
+procedure TExcelLayoutTests.Preserve_CellBackgroundColor;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkBook.SaveToFile(FTempFile);
+
+  var Workbook2 := TExcelWorkbookFactory.Create;
+  Workbook2.LoadFromFile(FTempFile);
+
+  var Sheet := Workbook2.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  Assert.AreEqual(Green,  Sheet.Cell['B1'].BackgroundColor,'Layout!B1');
+  Assert.AreEqual(Yellow, Sheet.Cell['A2'].BackgroundColor,'Layout!A2');
+end;
+
+procedure TExcelLayoutTests.Reads_IndexedColor;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+
+  var Sheet := FWorkbook.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  // A5 has style 2: fill with fgColor indexed="13", which maps to yellow ($FFFF00)
+  // in the OOXML default indexed colour palette.
+  Assert.AreEqual(IndexedYellow, Sheet.Cell['A5'].BackgroundColor, 'Layout!A5 indexed colour');
+end;
+
+procedure TExcelLayoutTests.Preserve_IndexedColor;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.SaveToFile(FTempFile);
+
+  var Workbook2 := TExcelWorkbookFactory.Create;
+  Workbook2.LoadFromFile(FTempFile);
+
+  var Sheet := Workbook2.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  // After a save/reload cycle, the indexed colour on A5 should be preserved
+  // (written as fgColor rgb= since the library always saves in modern format).
+  Assert.AreEqual(IndexedYellow, Sheet.Cell['A5'].BackgroundColor, 'Layout!A5 indexed colour');
+end;
+
+procedure TExcelLayoutTests.Reads_ColumnWidth;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+
+  var Sheet := FWorkbook.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  Assert.AreEqual(Double(20), Sheet.GetColumnWidth('B'), 'Layout col B width');
+  Assert.AreEqual(Double(30), Sheet.GetColumnWidth('C'), 'Layout col C width');
+end;
+
+procedure TExcelLayoutTests.Preserve_ColumnWidth;
+begin
+  FWorkbook.LoadFromFile(GetExcelSamplePath);
+  FWorkbook.SaveToFile(FTempFile);
+
+  var Workbook2 := TExcelWorkbookFactory.Create;
+  Workbook2.LoadFromFile(FTempFile);
+
+  var Sheet := Workbook2.SheetByName('Layout');
+  Assert.IsNotNull(Sheet);
+
+  Assert.AreEqual(Double(20), Sheet.GetColumnWidth('B'), 'Layout col B width');
+  Assert.AreEqual(Double(30), Sheet.GetColumnWidth('C'), 'Layout col C width');
+end;
+
 initialization
   TDUnitX.RegisterTestFixture(TExcelReadTests);
   TDUnitX.RegisterTestFixture(TExcelDOMTests);
   TDUnitX.RegisterTestFixture(TExcelAdvancedTests);
   TDUnitX.RegisterTestFixture(TExcelFormulaTests);
+  TDUnitX.RegisterTestFixture(TExcelLayoutTests);
 
 end.

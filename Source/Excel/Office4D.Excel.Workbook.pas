@@ -144,6 +144,7 @@ type
     function BuildSharedStrings: TList<string>;
     function GetSharedStringIndex(const Strings: TList<string>; const Value: string): Integer;
     function EscapeXml(const Text: string): string;
+    function AdjustFormulaRefs(const Formula: string; const RowDelta, ColDelta: Integer): string;
     function GenerateContentTypes: string;
     function GenerateRels: string;
     function GenerateWorkbook: string;
@@ -182,6 +183,19 @@ uses
   Office4D.Types;
 
 const
+  // Default OOXML indexed colour palette (indices 0-63). Indices 0-7 are redundant
+  // copies of 8-15. Only non-zero colours are listed; everything else maps to 0.
+  OoxmlIndexedColors: array[0..63] of Cardinal = (
+    $000000, $FFFFFF, $FF0000, $00FF00, $0000FF, $FFFF00, $FF00FF, $00FFFF,  // 0-7
+    $000000, $FFFFFF, $FF0000, $00FF00, $0000FF, $FFFF00, $FF00FF, $00FFFF,  // 8-15
+    $800000, $008000, $000080, $808000, $800080, $008080, $C0C0C0, $808080,  // 16-23
+    $9999FF, $993366, $FFFFCC, $CCFFFF, $660066, $FF8080, $0066CC, $CCCCFF,  // 24-31
+    $000080, $FF00FF, $FFFF00, $00FFFF, $800080, $800000, $008080, $0000FF,  // 32-39
+    $00CCFF, $CCFFFF, $CCFFCC, $FFFF99, $99CCFF, $FF99CC, $CC99FF, $FFCC99,  // 40-47
+    $3366FF, $33CCCC, $99CC00, $FFCC00, $FF9900, $FF6600, $666699, $969696,  // 48-55
+    $003366, $339966, $003300, $333300, $993300, $993366, $333399, $333333   // 56-63
+  );
+
   ExcelDateOffset = 25569;
   XmlDeclaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   RelationshipsNs = 'http://schemas.openxmlformats.org/package/2006/relationships';
@@ -946,6 +960,11 @@ begin
             end
             else
             case Cell.CellType of
+              TCellType.Empty:
+                begin
+                  if StyleIdx > 0 then
+                    SB.Append('<c r="' + CellPair.Key + '"' + StyleAttr + '/>');
+                end;
               TCellType.StringValue:
                 begin
                   const StrIdx = GetSharedStringIndex(SharedStrings, Cell.GetAsString);
@@ -1393,15 +1412,52 @@ begin
         FontsSize.Add(0);
     end;
 
+    // Build the indexed colour palette. Start with the OOXML default palette.
+    // If the styles XML contains a custom <indexedColors> block it replaces
+    // the defaults entirely, so we rebuild the list from those entries instead.
+    var IndexedPalette := TList<Cardinal>.Create;
+    try
+      for var I := 0 to High(OoxmlIndexedColors) do
+        IndexedPalette.Add(OoxmlIndexedColors[I]);
+
+      const CustomPaletteMatch = TRegEx.Match(Xml,
+        '<indexedColors>(.*?)</indexedColors>', [roIgnoreCase, roSingleLine]);
+      if CustomPaletteMatch.Success then
+      begin
+        const RgbMatches = TRegEx.Matches(CustomPaletteMatch.Groups[1].Value,
+          '<rgbColor\s+rgb="00([0-9A-Fa-f]{6})"', [roIgnoreCase]);
+        if RgbMatches.Count > 0 then
+        begin
+          IndexedPalette.Clear;
+          for var RgbMatch in RgbMatches do
+            IndexedPalette.Add(StrToInt64Def('$' + RgbMatch.Groups[1].Value, 0));
+        end;
+      end;
+
     const FillMatches = TRegEx.Matches(Xml, '<fill>(.*?)</fill>', [roIgnoreCase, roSingleLine]);
     for var Match in FillMatches do
     begin
       const FillXml = Match.Groups[1].Value;
-      const ColorMatch = TRegEx.Match(FillXml, 'fgColor\s+rgb="FF([0-9A-Fa-f]{6})"', [roIgnoreCase]);
-      if ColorMatch.Success then
-        Fills.Add(StrToInt64Def('$' + ColorMatch.Groups[1].Value, 0))
+      const RgbMatch = TRegEx.Match(FillXml, 'fgColor\s+rgb="FF([0-9A-Fa-f]{6})"', [roIgnoreCase]);
+      if RgbMatch.Success then
+        Fills.Add(StrToInt64Def('$' + RgbMatch.Groups[1].Value, 0))
       else
-        Fills.Add(0);
+      begin
+        const IdxMatch = TRegEx.Match(FillXml, 'fgColor\s+indexed="(\d+)"', [roIgnoreCase]);
+        if IdxMatch.Success then
+        begin
+          const Idx = StrToIntDef(IdxMatch.Groups[1].Value, -1);
+          if (Idx >= 0) and (Idx < IndexedPalette.Count) then
+            Fills.Add(IndexedPalette[Idx])
+          else
+            Fills.Add(0);
+        end
+        else
+          Fills.Add(0);
+      end;
+    end;
+    finally
+      IndexedPalette.Free;
     end;
 
     const BorderMatches = TRegEx.Matches(Xml, '<border\s*/>', [roIgnoreCase]);
@@ -1518,8 +1574,99 @@ begin
   end;
 end;
 
+function TExcelWorkbook.AdjustFormulaRefs(const Formula: string; const RowDelta, ColDelta: Integer): string;
+// Adjusts relative cell references in a formula by the given row and column
+// deltas. Absolute references ($A$1) are left unchanged. Used when expanding shared formulas.
+var
+  Adjusted: string;
+begin
+  if (RowDelta = 0) and (ColDelta = 0) then
+    Exit(Formula);
+
+  Adjusted := Formula;
+  // Match cell references of the form [SheetName!][$]ColLetters[$]RowNumber.
+  // We handle relative row (no $ before row number) and relative column (no $ before col letters).
+  // Pattern: optionally anchored sheet prefix, then optional $, column letters, optional $, row digits.
+  const RefPattern = '(?<![A-Z$])(\$?[A-Z]+)(\$?\d+)';
+  var Matches := TRegEx.Matches(Formula, RefPattern, [roIgnoreCase]);
+  var OffsetAdjust := 0;
+  for var M in Matches do
+  begin
+    const ColPart = M.Groups[1].Value;  // e.g. 'A' or '$A'
+    const RowPart = M.Groups[2].Value;  // e.g. '1' or '$1'
+    const ColAbs = ColPart.StartsWith('$');
+    const RowAbs = RowPart.StartsWith('$');
+
+    var NewColPart := ColPart;
+    var NewRowPart := RowPart;
+
+    if (not RowAbs) and (RowDelta <> 0) then
+    begin
+      const OldRow = StrToIntDef(RowPart, 0);
+      if OldRow > 0 then
+        NewRowPart := IntToStr(OldRow + RowDelta);
+    end;
+
+    if (not ColAbs) and (ColDelta <> 0) then
+    begin
+      var ColNum := TExcelSheet.ColumnLetterToNumber(ColPart);
+      Inc(ColNum, ColDelta);
+      // Convert column number back to letters
+      var ColLetters := '';
+      while ColNum > 0 do
+      begin
+        const Remainder = (ColNum - 1) mod 26;
+        ColLetters := Chr(Ord('A') + Remainder) + ColLetters;
+        ColNum := (ColNum - 1) div 26;
+      end;
+      NewColPart := ColLetters;
+    end;
+
+    if (NewColPart <> ColPart) or (NewRowPart <> RowPart) then
+    begin
+      const OldRef = ColPart + RowPart;
+      const NewRef = NewColPart + NewRowPart;
+      const Pos = M.Index + OffsetAdjust;  // TMatch.Index is 1-based (Delphi string convention)
+      Delete(Adjusted, Pos, Length(OldRef));
+      Insert(NewRef, Adjusted, Pos);
+      Inc(OffsetAdjust, Length(NewRef) - Length(OldRef));
+    end;
+  end;
+  Result := Adjusted;
+end;
+
 procedure TExcelWorkbook.ParseSheet(const Sheet: TExcelSheet; const Xml: string);
 begin
+  const ColMatches = TRegEx.Matches(Xml, '<col\s[^/]*/>', [roIgnoreCase]);
+  for var ColMatch in ColMatches do
+  begin
+    const ColXml = ColMatch.Value;
+    const WidthMatch = TRegEx.Match(ColXml, 'width="([^"]*)"', [roIgnoreCase]);
+    const CustomMatch = TRegEx.Match(ColXml, 'customWidth="1"', [roIgnoreCase]);
+    if WidthMatch.Success and CustomMatch.Success then
+    begin
+      const Width = StrToFloatDef(WidthMatch.Groups[1].Value, 0, TFormatSettings.Invariant);
+      if Width > 0 then
+      begin
+        const MinMatch = TRegEx.Match(ColXml, 'min="(\d+)"', [roIgnoreCase]);
+        const MaxMatch = TRegEx.Match(ColXml, 'max="(\d+)"', [roIgnoreCase]);
+        const ColMin = StrToIntDef(MinMatch.Groups[1].Value, 0);
+        const ColMax = StrToIntDef(MaxMatch.Groups[1].Value, 0);
+        for var ColNum := ColMin to ColMax do
+        begin
+          var ColLetters := '';
+          var N := ColNum;
+          while N > 0 do
+          begin
+            ColLetters := Chr(Ord('A') + (N - 1) mod 26) + ColLetters;
+            N := (N - 1) div 26;
+          end;
+          Sheet.SetColumnWidth(ColLetters, Width);
+        end;
+      end;
+    end;
+  end;
+
   const RowMatches = TRegEx.Matches(Xml, '<row\s[^>]*>', [roIgnoreCase]);
   for var RowMatch in RowMatches do
   begin
@@ -1539,46 +1686,147 @@ begin
     end;
   end;
 
-  const CellMatches = TRegEx.Matches(Xml, '<c\s+r="([A-Z]+\d+)"(?:\s+s="(\d+)")?(?:\s+t="([^"]*)")?[^>]*>(?:<f>([^<]*)</f>)?.*?<v>([^<]*)</v>.*?</c>', [roIgnoreCase, roSingleLine]);
-  for var Match in CellMatches do
-  begin
-    if Match.Groups.Count > 5 then
-    begin
-      const Address = Match.Groups[1].Value;
-      const StyleIdx = StrToIntDef(Match.Groups[2].Value, 0);
-      const CellType = Match.Groups[3].Value;
-      const Formula = Match.Groups[4].Value;
-      const Value = Match.Groups[5].Value;
-
-      var Cell: TExcelCell := nil;
-
-      if Formula <> '' then
+  // Build a map of shared formula index -> (masterAddress, formulaString).
+  // Excel writes shared formulas as <f t="shared" si="N" ref="...">formula</f> on the
+  // master cell and <f t="shared" si="N"/> (self-closing, no text) on the dependent cells.
+  // We need the master address to compute row/column offsets for relative-reference adjustment.
+  var SharedFormulas := TDictionary<Integer, TPair<string, string>>.Create;
+  try
+    // Scan backwards in the XML: for each master cell (<c r="ADDR">...<f ... si="N">formula</f>...)
+    // capture ADDR, N, and formula. We match the whole <c>...</c> block.
+    const SharedMasterMatches = TRegEx.Matches(Xml,
+      '<c\s+r="([A-Z]+\d+)"[^>]*>(?:(?!</c>).)*<f\s[^>]*\bsi="(\d+)"[^>]*>([^<]+)</f>',
+      [roIgnoreCase, roSingleLine]);
+    for var SfMatch in SharedMasterMatches do
+      if SfMatch.Groups.Count > 3 then
       begin
-        Sheet.SetCellFormula(Address, Formula, Value);
-        Cell := Sheet.GetCell(Address) as TExcelCell;
-      end
-      else if CellType = 's' then
-      begin
-        const StrIndex = StrToIntDef(Value, -1);
-        if (StrIndex >= 0) and (StrIndex < FSharedStrings.Count) then
-        begin
-          Sheet.SetCellValue(Address, FSharedStrings[StrIndex], True);
-          Cell := Sheet.GetCell(Address) as TExcelCell;
-        end;
-      end
-      else if CellType = 'b' then
-      begin
-        Sheet.SetBooleanValue(Address, Value = '1');
-        Cell := Sheet.GetCell(Address) as TExcelCell;
-      end
-      else
-      begin
-        Sheet.SetCellValue(Address, Value, False);
-        Cell := Sheet.GetCell(Address) as TExcelCell;
+        const SiIdx = StrToIntDef(SfMatch.Groups[2].Value, -1);
+        if SiIdx >= 0 then
+          SharedFormulas.AddOrSetValue(SiIdx,
+            TPair<string, string>.Create(SfMatch.Groups[1].Value, SfMatch.Groups[3].Value));
       end;
 
-      if (Cell <> nil) and (StyleIdx > 0) then
+    // Match each cell element. Self-closing <c r=".."/> empty cells are excluded via
+    // (?<!/)> so they cannot steal <v> values from adjacent cells. (?:(?!</c>).)*
+    // prevents crossing cell boundaries before reaching <v>.
+    // The <f> element may have attributes (e.g. t="shared" si="0"), so we use
+    // <f[^>]*> for the opening tag. Self-closing <f.../> cells have an empty formula
+    // text; the si index is extracted separately for shared-formula dependent-cell resolution.
+    // Group layout: 1=address, 2=style, 3=cell-type, 4=formula-text, 5=si-index, 6=value.
+    const CellMatches = TRegEx.Matches(Xml,
+      '<c\s+r="([A-Z]+\d+)"(?:\s+s="(\d+)")?(?:\s+t="([^"]*)")?[^>]*(?<!/)>' +
+      '(?:<f(?:\s+[^>]*)?>([^<]*)</f>|<f(?:\s+[^>]*)?\bsi="(\d+)"[^/]*/>)?' +
+      '(?:(?!</c>).)*<v>([^<]*)</v>.*?</c>',[roIgnoreCase, roSingleLine]);
+    for var Match in CellMatches do
+    begin
+      if Match.Groups.Count > 6 then
       begin
+        const Address = Match.Groups[1].Value;
+        const StyleIdx = StrToIntDef(Match.Groups[2].Value, 0);
+        const CellType = Match.Groups[3].Value;
+        var   Formula: string := Match.Groups[4].Value;
+        const SiIndex  = Match.Groups[5].Value;
+        const Value    = Match.Groups[6].Value;
+
+        // Dependent shared-formula cells have an empty formula text but carry a si index.
+        // Resolve and adjust the formula string from the shared formula map.
+        if (Formula = '') and (SiIndex <> '') then
+        begin
+          const SiIdx = StrToIntDef(SiIndex, -1);
+          var MasterInfo: TPair<string, string>;
+          if (SiIdx >= 0) and SharedFormulas.TryGetValue(SiIdx, MasterInfo) then
+          begin
+            // Compute row and column offsets from master cell to this dependent cell.
+            const MasterAddr = MasterInfo.Key;
+            const MasterFormula = MasterInfo.Value;
+            var MasterCol := '';
+            var MasterRowStr := '';
+            for var Ch in MasterAddr do
+              if CharInSet(Ch, ['A'..'Z', 'a'..'z']) then MasterCol := MasterCol + Ch
+              else MasterRowStr := MasterRowStr + Ch;
+            var DependentCol := '';
+            var DependentRowStr := '';
+            for var Ch in Address do
+              if CharInSet(Ch, ['A'..'Z', 'a'..'z']) then DependentCol := DependentCol + Ch
+              else DependentRowStr := DependentRowStr + Ch;
+            const RowDelta = StrToIntDef(DependentRowStr, 0) - StrToIntDef(MasterRowStr, 0);
+            const ColDelta = TExcelSheet.ColumnLetterToNumber(DependentCol) -
+                             TExcelSheet.ColumnLetterToNumber(MasterCol);
+            Formula := AdjustFormulaRefs(MasterFormula, RowDelta, ColDelta);
+          end;
+        end;
+
+        var Cell: TExcelCell := nil;
+
+        if Formula <> '' then
+        begin
+          Sheet.SetCellFormula(Address, Formula, Value);
+          Cell := Sheet.GetCell(Address) as TExcelCell;
+        end
+        else if CellType = 's' then
+        begin
+          const StrIndex = StrToIntDef(Value, -1);
+          if (StrIndex >= 0) and (StrIndex < FSharedStrings.Count) then
+          begin
+            Sheet.SetCellValue(Address, FSharedStrings[StrIndex], True);
+            Cell := Sheet.GetCell(Address) as TExcelCell;
+          end;
+        end
+        else if CellType = 'b' then
+        begin
+          Sheet.SetBooleanValue(Address, Value = '1');
+          Cell := Sheet.GetCell(Address) as TExcelCell;
+        end
+        else
+        begin
+          Sheet.SetCellValue(Address, Value, False);
+          Cell := Sheet.GetCell(Address) as TExcelCell;
+        end;
+
+        if (Cell <> nil) and (StyleIdx > 0) then
+        begin
+          if (StyleIdx < FStyleBold.Count) and (FStyleBold[StyleIdx]) then
+            Cell.FBold := True;
+          if (StyleIdx < FStyleItalic.Count) and (FStyleItalic[StyleIdx]) then
+            Cell.FItalic := True;
+          if (StyleIdx < FStyleUnderline.Count) and (FStyleUnderline[StyleIdx]) then
+            Cell.FUnderline := True;
+          if (StyleIdx < FStyleFontName.Count) and (FStyleFontName[StyleIdx] <> '') then
+            Cell.FFontName := FStyleFontName[StyleIdx];
+          if (StyleIdx < FStyleFontSize.Count) and (FStyleFontSize[StyleIdx] <> 0) then
+            Cell.FFontSize := FStyleFontSize[StyleIdx];
+          if (StyleIdx < FStyleColors.Count) and (FStyleColors[StyleIdx] <> 0) then
+            Cell.FBackgroundColor := FStyleColors[StyleIdx];
+          if (StyleIdx < FStyleBorderStyle.Count) and (FStyleBorderStyle[StyleIdx] <> TExcelBorderStyle.None) then
+            Cell.FBorderStyle := FStyleBorderStyle[StyleIdx];
+          if (StyleIdx < FStyleBorderColor.Count) and (FStyleBorderColor[StyleIdx] <> 0) then
+            Cell.FBorderColor := FStyleBorderColor[StyleIdx];
+          if (StyleIdx < FStyleHAlign.Count) and (FStyleHAlign[StyleIdx] <> TExcelHAlign.None) then
+            Cell.FHAlign := FStyleHAlign[StyleIdx];
+          if (StyleIdx < FStyleVAlign.Count) and (FStyleVAlign[StyleIdx] <> TExcelVAlign.None) then
+            Cell.FVAlign := FStyleVAlign[StyleIdx];
+          if (StyleIdx < FStyleWrapText.Count) and (FStyleWrapText[StyleIdx]) then
+            Cell.FWrapText := True;
+        end;
+      end;
+    end;
+  finally
+    SharedFormulas.Free;
+  end;
+
+  // Apply styles to self-closing empty cells (<c r="X" s="N"/>).
+  // These have no <v> element so the main cell loop skips them, but they may
+  // carry a meaningful style (e.g. background colour) that must be preserved.
+  const EmptyCellMatches = TRegEx.Matches(Xml,
+    '<c\s+r="([A-Z]+\d+)"\s+s="(\d+)"[^>]*/>', [roIgnoreCase]);
+  for var Match in EmptyCellMatches do
+    if Match.Groups.Count > 2 then
+    begin
+      const Address  = Match.Groups[1].Value;
+      const StyleIdx = StrToIntDef(Match.Groups[2].Value, 0);
+      if StyleIdx > 0 then
+      begin
+        var Cell := Sheet.GetCell(Address) as TExcelCell;
         if (StyleIdx < FStyleBold.Count) and (FStyleBold[StyleIdx]) then
           Cell.FBold := True;
         if (StyleIdx < FStyleItalic.Count) and (FStyleItalic[StyleIdx]) then
@@ -1603,7 +1851,11 @@ begin
           Cell.FWrapText := True;
       end;
     end;
-  end;
+
+  const MergeMatches = TRegEx.Matches(Xml, '<mergeCell\s+ref="([^"]+)"', [roIgnoreCase]);
+  for var MergeMatch in MergeMatches do
+    if MergeMatch.Groups.Count > 1 then
+      Sheet.MergeCells(MergeMatch.Groups[1].Value);
 end;
 
 function TExcelWorkbook.GetSheetCount: Integer;

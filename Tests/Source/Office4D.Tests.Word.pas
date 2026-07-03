@@ -6,16 +6,15 @@ uses
   System.SysUtils,
   System.IOUtils,
   DUnitX.TestFramework,
+  Office4D.Tests.Samples,
   Office4D.Word;
 
 type
   [TestFixture]
-  TWordReadTests = class
+  TWordReadTests = class(TOffice4DTests)
   private
     FDoc: IWordDocument;
 
-    function GetSamplesPath: string;
-    function GetWordSamplePath: string;
   public
     [Setup]
     procedure Setup;
@@ -108,16 +107,6 @@ uses
   Office4D.Errors;
 
 { TWordReadTests }
-
-function TWordReadTests.GetSamplesPath: string;
-begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
-end;
-
-function TWordReadTests.GetWordSamplePath: string;
-begin
-  Result := TPath.Combine(GetSamplesPath, 'Word\simple_word.docx');
-end;
 
 procedure TWordReadTests.Setup;
 begin

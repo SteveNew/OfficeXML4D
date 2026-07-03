@@ -7,17 +7,15 @@ uses
   System.SysUtils,
   System.IOUtils,
   DUnitX.TestFramework,
+  Office4D.Tests.Samples,
   Office4D.Package,
   Office4D.Errors;
 
 type
   [TestFixture]
-  TPackageTests = class
+  TPackageTests = class(TOffice4DTests)
   private
     FPackage: TOXMLPackage;
-    function GetSamplesPath: string;
-    function GetWordSamplePath: string;
-    function GetExcelSamplePath: string;
   public
     [Setup]
     procedure Setup;
@@ -62,21 +60,6 @@ type
 implementation
 
 { TPackageTests }
-
-function TPackageTests.GetSamplesPath: string;
-begin
-  Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\Samples'));
-end;
-
-function TPackageTests.GetWordSamplePath: string;
-begin
-  Result := TPath.Combine(GetSamplesPath, 'Word\simple_word.docx');
-end;
-
-function TPackageTests.GetExcelSamplePath: string;
-begin
-  Result := TPath.Combine(GetSamplesPath, 'Excel\simple_excel.xlsx');
-end;
 
 procedure TPackageTests.Setup;
 begin
