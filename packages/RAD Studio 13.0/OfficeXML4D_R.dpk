@@ -1,0 +1,46 @@
+﻿package OfficeXML4D_R;
+
+{$R *.res}
+{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO OFF}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS OFF}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION ON}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO OFF}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES OFF}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DEFINE RELEASE}
+{$ENDIF IMPLICITBUILDING}
+{$LIBSUFFIX AUTO}
+{$RUNONLY}
+{$IMPLICITBUILD OFF}
+
+requires
+  rtl;
+
+contains
+  Office4D.Metadata in '..\..\Source\Common\Office4D.Metadata.pas',
+  Office4D.Errors in '..\..\Source\Core\Office4D.Errors.pas',
+  Office4D.Package in '..\..\Source\Core\Office4D.Package.pas',
+  Office4D.Relationships in '..\..\Source\Core\Office4D.Relationships.pas',
+  Office4D.Types in '..\..\Source\Core\Office4D.Types.pas',
+  Office4D.Excel in '..\..\Source\Excel\Office4D.Excel.pas',
+  Office4D.Excel.Workbook in '..\..\Source\Excel\Office4D.Excel.Workbook.pas',
+  Office4D.Word.Document in '..\..\Source\Word\Office4D.Word.Document.pas',
+  Office4D.Word in '..\..\Source\Word\Office4D.Word.pas';
+
+end.
