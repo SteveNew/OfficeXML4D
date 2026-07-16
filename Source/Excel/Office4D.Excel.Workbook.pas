@@ -200,7 +200,6 @@ const
     $003366, $339966, $003300, $333300, $993300, $993366, $333399, $333333   // 56-63
   );
 
-  ExcelDateOffset = 25569;
   XmlDeclaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   RelationshipsNs = 'http://schemas.openxmlformats.org/package/2006/relationships';
   ContentTypesNs = 'http://schemas.openxmlformats.org/package/2006/content-types';
@@ -256,7 +255,7 @@ begin
   if FCellType = TCellType.DateTime then
     Result := FDateTimeValue
   else if FCellType = TCellType.Number then
-    Result := FFloatValue - ExcelDateOffset
+    Result := FFloatValue
   else
     Result := 0;
 end;
@@ -264,7 +263,7 @@ end;
 procedure TExcelCell.SetAsDateTime(const Value: TDateTime);
 begin
   FDateTimeValue := Value;
-  FFloatValue := Value + ExcelDateOffset;
+  FFloatValue := Value;
   FCellType := TCellType.DateTime;
 end;
 
