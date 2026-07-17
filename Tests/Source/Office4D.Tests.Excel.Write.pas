@@ -860,7 +860,7 @@ procedure TExcelWriteTests.SaveToFile_WithBorderThin_ContainsBorderStyle;
 begin
   const Sheet = FWorkbook.AddSheet('Sheet1');
   Sheet.Cell['A1'].AsString := 'Bordered';
-  Sheet.Cell['A1'].BorderStyle := TExcelBorderStyle.Thin;
+  Sheet.Cell['A1'].BorderStyle[AllBorderSides] := TExcelBorderStyle.Thin;
 
   FWorkbook.SaveToFile(FTempFile);
 
@@ -878,7 +878,7 @@ procedure TExcelWriteTests.RoundTrip_BorderThin_PreservesBorder;
 begin
   const Sheet = FWorkbook.AddSheet('Sheet1');
   Sheet.Cell['A1'].AsString := 'Bordered';
-  Sheet.Cell['A1'].BorderStyle := TExcelBorderStyle.Thin;
+  Sheet.Cell['A1'].BorderStyle[AllBorderSides] := TExcelBorderStyle.Thin;
   Sheet.Cell['B1'].AsString := 'No border';
 
   FWorkbook.SaveToFile(FTempFile);
@@ -886,16 +886,16 @@ begin
   const Workbook2 = TExcelWorkbookFactory.Create;
   Workbook2.LoadFromFile(FTempFile);
 
-  Assert.AreEqual(Ord(TExcelBorderStyle.Thin), Ord(Workbook2.Sheets[0].Cell['A1'].BorderStyle));
-  Assert.AreEqual(Ord(TExcelBorderStyle.None), Ord(Workbook2.Sheets[0].Cell['B1'].BorderStyle));
+  Assert.AreEqual(Ord(TExcelBorderStyle.Thin), Ord(Workbook2.Sheets[0].Cell['A1'].BorderStyle[AllBorderSides]));
+  Assert.AreEqual(Ord(TExcelBorderStyle.None), Ord(Workbook2.Sheets[0].Cell['B1'].BorderStyle[AllBorderSides]));
 end;
 
 procedure TExcelWriteTests.SaveToFile_WithBorderColor_ContainsBorderColor;
 begin
   const Sheet = FWorkbook.AddSheet('Sheet1');
   Sheet.Cell['A1'].AsString := 'Red border';
-  Sheet.Cell['A1'].BorderStyle := TExcelBorderStyle.Thin;
-  Sheet.Cell['A1'].BorderColor := $FF0000;
+  Sheet.Cell['A1'].BorderStyle[AllBorderSides] := TExcelBorderStyle.Thin;
+  Sheet.Cell['A1'].BorderColor[AllBorderSides] := $FF0000;
 
   FWorkbook.SaveToFile(FTempFile);
 
@@ -913,15 +913,15 @@ procedure TExcelWriteTests.RoundTrip_BorderColor_PreservesBorderColor;
 begin
   const Sheet = FWorkbook.AddSheet('Sheet1');
   Sheet.Cell['A1'].AsString := 'Red border';
-  Sheet.Cell['A1'].BorderStyle := TExcelBorderStyle.Thin;
-  Sheet.Cell['A1'].BorderColor := $FF0000;
+  Sheet.Cell['A1'].BorderStyle[AllBorderSides] := TExcelBorderStyle.Thin;
+  Sheet.Cell['A1'].BorderColor[AllBorderSides] := $FF0000;
 
   FWorkbook.SaveToFile(FTempFile);
 
   const Workbook2 = TExcelWorkbookFactory.Create;
   Workbook2.LoadFromFile(FTempFile);
 
-  Assert.AreEqual(Cardinal($FF0000), Workbook2.Sheets[0].Cell['A1'].BorderColor);
+  Assert.AreEqual(Cardinal($FF0000), Workbook2.Sheets[0].Cell['A1'].BorderColor[AllBorderSides]);
 end;
 
 procedure TExcelWriteTests.SaveToFile_WithHAlign_ContainsAlignmentXml;
@@ -1035,8 +1035,8 @@ begin
   Sheet.Cell['A1'].FontName := 'Arial';
   Sheet.Cell['A1'].FontSize := 14;
   Sheet.Cell['A1'].BackgroundColor := $FFFF00;
-  Sheet.Cell['A1'].BorderStyle := TExcelBorderStyle.Medium;
-  Sheet.Cell['A1'].BorderColor := $0000FF;
+  Sheet.Cell['A1'].BorderStyle[AllBorderSides] := TExcelBorderStyle.Medium;
+  Sheet.Cell['A1'].BorderColor[AllBorderSides] := $0000FF;
   Sheet.Cell['A1'].HAlign := TExcelHAlign.Center;
   Sheet.Cell['A1'].VAlign := TExcelVAlign.Bottom;
   Sheet.Cell['A1'].WrapText := True;
@@ -1055,8 +1055,8 @@ begin
   Assert.AreEqual('Arial', Cell.FontName);
   Assert.AreEqual(Double(14), Cell.FontSize, 0.01);
   Assert.AreEqual(Cardinal($FFFF00), Cell.BackgroundColor);
-  Assert.AreEqual(Ord(TExcelBorderStyle.Medium), Ord(Cell.BorderStyle));
-  Assert.AreEqual(Cardinal($0000FF), Cell.BorderColor);
+  Assert.AreEqual(Ord(TExcelBorderStyle.Medium), Ord(Cell.BorderStyle[AllBorderSides]));
+  Assert.AreEqual(Cardinal($0000FF), Cell.BorderColor[AllBorderSides]);
   Assert.AreEqual(Ord(TExcelHAlign.Center), Ord(Cell.HAlign));
   Assert.AreEqual(Ord(TExcelVAlign.Bottom), Ord(Cell.VAlign));
   Assert.IsTrue(Cell.WrapText, 'Should have wrapText');
