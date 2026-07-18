@@ -701,8 +701,7 @@ begin
   var Sheet := FWorkbook.SheetByName('Layout');
   Assert.IsNotNull(Sheet);
 
-  // A2 has a coloured font, which maps to greenish ($00B050)
-  Assert.AreEqual($00B050, Sheet.Cell['A2'].FontColor, 'Layout!A2 font colour');
+  Assert.AreEqual(Cardinal($00B050), Sheet.Cell['A2'].FontColor, 'Layout!A2 font colour');
 end;
 
 procedure TExcelLayoutTests.Preserve_FontColor;
@@ -716,8 +715,7 @@ begin
   var Sheet := Workbook2.SheetByName('Layout');
   Assert.IsNotNull(Sheet);
 
-  // After a save/reload cycle, the font colour on A2 should be preserved
-  Assert.AreEqual($00B050, Sheet.Cell['A2'].FontColor, 'Layout!A2 font colour');
+  Assert.AreEqual(Cardinal($00B050), Sheet.Cell['A2'].FontColor, 'Layout!A2 font colour');
 end;
 
 { TExcelSharedStringsTests }

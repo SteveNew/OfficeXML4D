@@ -1450,7 +1450,7 @@ begin
 
       const ColorMatch = TRegEx.Match(FontXml, '<color\s+rgb="FF([0-9A-Fa-f]{6})"', [roIgnoreCase]);
       if ColorMatch.Success then
-        FontsColor.Add(StrToInt('$' + ColorMatch.Groups[1].Value))
+        FontsColor.Add(StrToInt64Def('$' + ColorMatch.Groups[1].Value, 0))
       else
         FontsColor.Add(0);
 
@@ -1626,7 +1626,7 @@ begin
     BorderColors.Free;
     BorderStyles.Free;
     Fills.Free;
-    FontSColor.Free;
+    FontsColor.Free;
     FontsSize.Free;
     FontsName.Free;
     FontsUnderline.Free;
