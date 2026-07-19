@@ -64,6 +64,9 @@ type
     procedure SaveToFile_DateTimeCells_HaveDateStyle;
 
     [Test]
+    procedure SaveToFile_DateTimeCell_WritesCorrectExcelValue;
+
+    [Test]
     procedure SaveToFile_ContainsStylesXml;
 
     [Test]
@@ -1132,6 +1135,23 @@ begin
     Package.Open(FTempFile);
     const StylesXml = Package.GetPartContent('xl/styles.xml');
     Assert.IsTrue(Pos('numFmtId="22"', StylesXml) > 0, 'Date cell with time should use built-in locale-aware date/time format 22');
+  finally
+    Package.Free;
+  end;
+end;
+
+procedure TExcelWriteTests.SaveToFile_DateTimeCell_WritesCorrectExcelValue;
+begin
+  const Sheet = FWorkbook.AddSheet('Sheet1');
+  Sheet.Cell['A1'].AsDateTime := EncodeDate(2024, 6, 15);
+
+  FWorkbook.SaveToFile(FTempFile);
+
+  var Package := TOXMLPackage.Create;
+  try
+    Package.Open(FTempFile);
+    const SheetXml = Package.GetPartContent('xl/worksheets/sheet1.xml');
+    Assert.IsTrue(Pos('<c r="A1" s="1"><v>45458</v></c>', SheetXml) > 0, 'A1 should contain the literal Excel value 45458 for 2024-06-15, got: ' + SheetXml);
   finally
     Package.Free;
   end;
