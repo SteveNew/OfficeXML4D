@@ -270,6 +270,7 @@ Examples/      - Demo application
 ## Excel Features
 
 - Multiple worksheets
+- Sheet visibility (visible, hidden, very hidden)
 - Cell data types: string, number, boolean, datetime
 - Cell styling: bold, background color
 - Number formats (currency, percentage, custom)

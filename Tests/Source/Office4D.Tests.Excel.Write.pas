@@ -194,12 +194,28 @@ type
 
     [Test]
     procedure RoundTrip_FontColor_PreservesFontColor;
+
+    [Test]
+    procedure AddSheet_NewSheet_IsVisible;
+
+    [Test]
+    procedure SaveToFile_HiddenSheet_ContainsStateHidden;
+
+    [Test]
+    procedure SaveToFile_VeryHiddenSheet_ContainsStateVeryHidden;
+
+    [Test]
+    procedure RoundTrip_SheetVisibility_PreservesVisibility;
+
+    [Test]
+    procedure SaveToFile_AllSheetsHidden_RaisesException;
   end;
 
 implementation
 
 uses
   System.Zip,
+  Office4D.Errors,
   Office4D.Package;
 
 { TExcelWriteTests }
@@ -1200,6 +1216,77 @@ begin
   const Workbook2 = TExcelWorkbookFactory.Create;
   Workbook2.LoadFromFile(FTempFile);
   Assert.AreEqual(Special, Workbook2.Sheets[0].Cell['A1'].AsString, 'Cell special characters should round-trip');
+end;
+
+procedure TExcelWriteTests.AddSheet_NewSheet_IsVisible;
+begin
+  const Sheet = FWorkbook.AddSheet('Sheet1');
+
+  Assert.AreEqual(Ord(TExcelSheetVisibility.Visible), Ord(Sheet.Visibility));
+end;
+
+procedure TExcelWriteTests.SaveToFile_HiddenSheet_ContainsStateHidden;
+begin
+  FWorkbook.AddSheet('Visible').Cell['A1'].AsString := 'Shown';
+  FWorkbook.AddSheet('Hidden').Visibility := TExcelSheetVisibility.Hidden;
+
+  FWorkbook.SaveToFile(FTempFile);
+
+  var Package := TOXMLPackage.Create;
+  try
+    Package.Open(FTempFile);
+    const WorkbookXml = Package.GetPartContent('xl/workbook.xml');
+    Assert.IsTrue(Pos('<sheet name="Hidden" sheetId="2" state="hidden" r:id="rId2"/>', WorkbookXml) > 0, 'Hidden sheet should have state="hidden"');
+    Assert.IsFalse(Pos('<sheet name="Visible" sheetId="1" state=', WorkbookXml) > 0, 'Visible sheet should not have a state attribute');
+  finally
+    Package.Free;
+  end;
+end;
+
+procedure TExcelWriteTests.SaveToFile_VeryHiddenSheet_ContainsStateVeryHidden;
+begin
+  FWorkbook.AddSheet('Visible').Cell['A1'].AsString := 'Shown';
+  FWorkbook.AddSheet('VeryHidden').Visibility := TExcelSheetVisibility.VeryHidden;
+
+  FWorkbook.SaveToFile(FTempFile);
+
+  var Package := TOXMLPackage.Create;
+  try
+    Package.Open(FTempFile);
+    const WorkbookXml = Package.GetPartContent('xl/workbook.xml');
+    Assert.IsTrue(Pos('state="veryHidden"', WorkbookXml) > 0, 'Very hidden sheet should have state="veryHidden"');
+  finally
+    Package.Free;
+  end;
+end;
+
+procedure TExcelWriteTests.RoundTrip_SheetVisibility_PreservesVisibility;
+begin
+  FWorkbook.AddSheet('Shown').Cell['A1'].AsString := 'Data';
+  FWorkbook.AddSheet('Concealed').Visibility := TExcelSheetVisibility.Hidden;
+  FWorkbook.AddSheet('Buried').Visibility := TExcelSheetVisibility.VeryHidden;
+
+  FWorkbook.SaveToFile(FTempFile);
+
+  const Workbook2 = TExcelWorkbookFactory.Create;
+  Workbook2.LoadFromFile(FTempFile);
+  Assert.AreEqual(3, Workbook2.SheetCount);
+  Assert.AreEqual(Ord(TExcelSheetVisibility.Visible), Ord(Workbook2.Sheets[0].Visibility));
+  Assert.AreEqual(Ord(TExcelSheetVisibility.Hidden), Ord(Workbook2.Sheets[1].Visibility));
+  Assert.AreEqual(Ord(TExcelSheetVisibility.VeryHidden), Ord(Workbook2.Sheets[2].Visibility));
+end;
+
+procedure TExcelWriteTests.SaveToFile_AllSheetsHidden_RaisesException;
+begin
+  FWorkbook.AddSheet('Sheet1').Visibility := TExcelSheetVisibility.Hidden;
+
+  Assert.WillRaise(
+    procedure
+    begin
+      FWorkbook.SaveToFile(FTempFile);
+    end,
+    EExcelWorkbookException
+  );
 end;
 
 initialization

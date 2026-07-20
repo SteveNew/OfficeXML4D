@@ -15,6 +15,9 @@ type
   TExcelVAlign = (None, Top, Center, Bottom);
   TExcelBorderSide = (Top, Right, Bottom, Left);
   TExcelBorderSides = set of TExcelBorderSide;
+  // VeryHidden sheets can only be made visible again through code (or the VBA editor),
+  // not through the Excel UI.
+  TExcelSheetVisibility = (Visible, Hidden, VeryHidden);
   {$SCOPEDENUMS OFF}
 
   IExcelCell = interface;
@@ -96,11 +99,15 @@ type
     procedure MergeCells(const Range: string);
     function GetMergedRanges: TArray<string>;
 
+    function GetVisibility: TExcelSheetVisibility;
+    procedure SetVisibility(const Value: TExcelSheetVisibility);
+
     function GetCells: TDictionary<string, IExcelCell>;
 
     property Name: string read GetName;
     property Cell[const Address: string]: IExcelCell read GetCell;
     property Cells: TDictionary<string, IExcelCell> read GetCells;
+    property Visibility: TExcelSheetVisibility read GetVisibility write SetVisibility;
   end;
 
   IExcelWorkbook = interface
