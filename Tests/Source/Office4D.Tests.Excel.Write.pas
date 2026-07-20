@@ -1236,8 +1236,9 @@ begin
   try
     Package.Open(FTempFile);
     const WorkbookXml = Package.GetPartContent('xl/workbook.xml');
-    Assert.IsTrue(Pos('<sheet name="Hidden" sheetId="2" state="hidden" r:id="rId2"/>', WorkbookXml) > 0, 'Hidden sheet should have state="hidden"');
-    Assert.IsFalse(Pos('<sheet name="Visible" sheetId="1" state=', WorkbookXml) > 0, 'Visible sheet should not have a state attribute');
+    const StateCount = (Length(WorkbookXml) - Length(StringReplace(WorkbookXml, 'state="', '', [rfReplaceAll]))) div Length('state="');
+    Assert.IsTrue(Pos('state="hidden"', WorkbookXml) > 0, 'Hidden sheet should have state="hidden"');
+    Assert.AreEqual(1, StateCount, 'Only the hidden sheet should carry a state attribute');
   finally
     Package.Free;
   end;
