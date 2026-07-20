@@ -4,6 +4,7 @@ interface
 
 uses
   System.SysUtils,
+  System.StrUtils,
   System.IOUtils,
   System.Zip,
   System.Generics.Collections,
@@ -622,8 +623,8 @@ begin
 
   var Ranges := Sheet.GetMergedRanges;
   Assert.AreEqual(2, Integer(Length(Ranges)), 'Merged range count');
-  Assert.IsTrue(TArray.Contains<string>(Ranges, 'B1:C2'), 'B1:C2');
-  Assert.IsTrue(TArray.Contains<string>(Ranges, 'A2:A4'), 'A2:A4');
+  Assert.IsTrue(MatchStr('B1:C2', Ranges), 'B1:C2');
+  Assert.IsTrue(MatchStr('A2:A4', Ranges), 'A2:A4');
 end;
 
 procedure TExcelLayoutTests.Preserve_MergedCell;
@@ -639,8 +640,8 @@ begin
 
   var Ranges := Sheet.GetMergedRanges;
   Assert.AreEqual(2, Integer(Length(Ranges)), 'Merged range count');
-  Assert.IsTrue(TArray.Contains<string>(Ranges, 'B1:C2'), 'B1:C2');
-  Assert.IsTrue(TArray.Contains<string>(Ranges, 'A2:A4'), 'A2:A4');
+  Assert.IsTrue(MatchStr('B1:C2', Ranges), 'B1:C2');
+  Assert.IsTrue(MatchStr('A2:A4', Ranges), 'A2:A4');
 end;
 
 procedure TExcelLayoutTests.Reads_CellBackgroundColor;
