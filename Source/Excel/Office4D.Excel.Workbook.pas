@@ -1514,18 +1514,27 @@ procedure TExcelWorkbook.ParseStyles(const Xml: string);
 
   procedure ParseSide(const BorderXml, Tag: string; out AStyle: TExcelBorderStyle; out AColor: Cardinal);
   begin
-    const SideMatch = TRegEx.Match(BorderXml, '<' + Tag + '\s+style="([^"]*)"', [roIgnoreCase]);
-    if SideMatch.Success then
-      AStyle := StringToBorderStyle(SideMatch.Groups[1].Value)
-    else
-      AStyle := TExcelBorderStyle.None;
+    AStyle := TExcelBorderStyle.None;
+    AColor := 0;
 
-    const ColorMatch = TRegEx.Match(BorderXml,
-      '<' + Tag + '[^>]*>.*?<color\s+rgb="FF([0-9A-Fa-f]{6})"', [roIgnoreCase, roSingleLine]);
+    // Isolate just this side's element first. Matching the whole <border> and then
+    // scanning to the first <color> lets a self-closing sibling (e.g. <top/>) bleed the
+    // colour of a later side (e.g. <bottom>) into this one, so restrict style/colour to
+    // this element. The alternation handles both <top/> and <top ...>...</top>.
+    const SideMatch = TRegEx.Match(BorderXml,
+      '<' + Tag + '\b[^>]*(?:/>|>.*?</' + Tag + '>)', [roIgnoreCase, roSingleLine]);
+    if not SideMatch.Success then
+      Exit;
+
+    const SideXml = SideMatch.Value;
+
+    const StyleMatch = TRegEx.Match(SideXml, 'style="([^"]*)"', [roIgnoreCase]);
+    if StyleMatch.Success then
+      AStyle := StringToBorderStyle(StyleMatch.Groups[1].Value);
+
+    const ColorMatch = TRegEx.Match(SideXml, '<color\s+rgb="FF([0-9A-Fa-f]{6})"', [roIgnoreCase]);
     if ColorMatch.Success then
-      AColor := StrToInt64Def('$' + ColorMatch.Groups[1].Value, 0)
-    else
-      AColor := 0;
+      AColor := StrToInt64Def('$' + ColorMatch.Groups[1].Value, 0);
   end;
 
   // Built-in numFmtId values 14-22 are the standard date/time formats

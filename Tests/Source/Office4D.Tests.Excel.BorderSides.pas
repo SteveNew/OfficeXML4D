@@ -52,6 +52,9 @@ type
 
     [Test]
     procedure LoadFromFile_AsymmetricBottomOnlyBorder_ReadsAllFourSidesIndependently;
+
+    [Test]
+    procedure RoundTrip_BottomOnlyColor_DoesNotBleedIntoOtherSides;
   end;
 
 implementation
@@ -365,6 +368,29 @@ begin
   Assert.AreEqual(Ord(TExcelBorderStyle.None), Ord(Cell.BorderStyle[[TExcelBorderSide.Right]]), 'Right must read as None');
   Assert.AreEqual(Ord(TExcelBorderStyle.Thin), Ord(Cell.BorderStyle[[TExcelBorderSide.Bottom]]), 'Bottom must read as Thin');
   Assert.AreEqual(Cardinal($000000), Cell.BorderColor[[TExcelBorderSide.Bottom]], 'Bottom color must read correctly');
+end;
+
+procedure TExcelBorderSidesTests.RoundTrip_BottomOnlyColor_DoesNotBleedIntoOtherSides;
+begin
+  const Sheet = FWorkbook.AddSheet('Sheet1');
+  Sheet.Cell['A1'].AsString := 'X';
+  // A non-black colour on a single side. Black is $000000 = 0 and so indistinguishable
+  // from "no colour", which is exactly what would hide a bleed -- the other three sides
+  // are written as self-closing <top/>/<left/>/<right/>, and none of them may pick up
+  // this bottom colour when parsed back.
+  Sheet.Cell['A1'].BorderStyle[[TExcelBorderSide.Bottom]] := TExcelBorderStyle.Thin;
+  Sheet.Cell['A1'].BorderColor[[TExcelBorderSide.Bottom]] := $FF0000;
+
+  FWorkbook.SaveToFile(FTempFile);
+
+  const Workbook2 = TExcelWorkbookFactory.Create;
+  Workbook2.LoadFromFile(FTempFile);
+  const Cell = Workbook2.Sheets[0].Cell['A1'];
+
+  Assert.AreEqual(Cardinal($FF0000), Cell.BorderColor[[TExcelBorderSide.Bottom]], 'Bottom colour must survive round-trip');
+  Assert.AreEqual(Cardinal(0), Cell.BorderColor[[TExcelBorderSide.Top]], 'Top colour must not bleed from bottom');
+  Assert.AreEqual(Cardinal(0), Cell.BorderColor[[TExcelBorderSide.Left]], 'Left colour must not bleed from bottom');
+  Assert.AreEqual(Cardinal(0), Cell.BorderColor[[TExcelBorderSide.Right]], 'Right colour must not bleed from bottom');
 end;
 
 initialization
