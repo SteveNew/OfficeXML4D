@@ -147,6 +147,7 @@
         <DCCReference Include="..\..\Source\Core\Office4D.Errors.pas"/>
         <DCCReference Include="..\..\Source\Core\Office4D.Package.pas"/>
         <DCCReference Include="..\..\Source\Core\Office4D.Relationships.pas"/>
+        <DCCReference Include="..\..\Source\Core\Office4D.Xml.pas"/>
         <DCCReference Include="..\..\Source\Common\Office4D.Metadata.pas"/>
         <DCCReference Include="..\..\Source\Word\Office4D.Word.pas"/>
         <DCCReference Include="..\..\Source\Word\Office4D.Word.Document.pas"/>
@@ -163,6 +164,7 @@
         <DCCReference Include="Office4D.Tests.Excel.pas"/>
         <DCCReference Include="Office4D.Tests.Excel.Write.pas"/>
         <DCCReference Include="Office4D.Tests.PowerPoint.pas"/>
+        <DCCReference Include="Office4D.Tests.Excel.BorderSides.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

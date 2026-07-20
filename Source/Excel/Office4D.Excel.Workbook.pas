@@ -33,8 +33,8 @@ type
     FFontSize: Double;
     FBackgroundColor: Cardinal;
     FNumberFormat: string;
-    FBorderStyle: TExcelBorderStyle;
-    FBorderColor: Cardinal;
+    FBorderStyle: array[TExcelBorderSide] of TExcelBorderStyle;
+    FBorderColor: array[TExcelBorderSide] of Cardinal;
     FHAlign: TExcelHAlign;
     FVAlign: TExcelVAlign;
     FWrapText: Boolean;
@@ -65,10 +65,10 @@ type
     procedure SetBackgroundColor(const Value: Cardinal);
     function GetNumberFormat: string;
     procedure SetNumberFormat(const Value: string);
-    function GetBorderStyle: TExcelBorderStyle;
-    procedure SetBorderStyle(const Value: TExcelBorderStyle);
-    function GetBorderColor: Cardinal;
-    procedure SetBorderColor(const Value: Cardinal);
+    function GetBorderStyle(ASides: TExcelBorderSides): TExcelBorderStyle;
+    procedure SetBorderStyle(ASides: TExcelBorderSides; const Value: TExcelBorderStyle);
+    function GetBorderColor(ASides: TExcelBorderSides): Cardinal;
+    procedure SetBorderColor(ASides: TExcelBorderSides; const Value: Cardinal);
     function GetHAlign: TExcelHAlign;
     procedure SetHAlign(const Value: TExcelHAlign);
     function GetVAlign: TExcelVAlign;
@@ -134,12 +134,18 @@ type
     FStyleFontName: TList<string>;
     FStyleFontSize: TList<Double>;
     FStyleColors: TList<Cardinal>;
-    FStyleBorderStyle: TList<TExcelBorderStyle>;
-    FStyleBorderColor: TList<Cardinal>;
+    FStyleFontColor: TList<Cardinal>;
+    FStyleBorderTopStyle: TList<TExcelBorderStyle>;
+    FStyleBorderTopColor: TList<Cardinal>;
+    FStyleBorderRightStyle: TList<TExcelBorderStyle>;
+    FStyleBorderRightColor: TList<Cardinal>;
+    FStyleBorderBottomStyle: TList<TExcelBorderStyle>;
+    FStyleBorderBottomColor: TList<Cardinal>;
+    FStyleBorderLeftStyle: TList<TExcelBorderStyle>;
+    FStyleBorderLeftColor: TList<Cardinal>;
     FStyleHAlign: TList<TExcelHAlign>;
     FStyleVAlign: TList<TExcelVAlign>;
     FStyleWrapText: TList<Boolean>;
-    FStyleFontColor: TList<Cardinal>;
     FStyleIsDate: TList<Boolean>;
 
     procedure ParseWorkbook(const Xml: string);
@@ -371,24 +377,34 @@ begin
   FFontSize := Value;
 end;
 
-function TExcelCell.GetBorderStyle: TExcelBorderStyle;
+function TExcelCell.GetBorderStyle(ASides: TExcelBorderSides): TExcelBorderStyle;
 begin
-  Result := FBorderStyle;
+  Result := TExcelBorderStyle.None;
+  for var Side := Low(TExcelBorderSide) to High(TExcelBorderSide) do
+    if Side in ASides then
+      Exit(FBorderStyle[Side]); // returns the first matching side in Top/Right/Bottom/Left order
 end;
 
-procedure TExcelCell.SetBorderStyle(const Value: TExcelBorderStyle);
+procedure TExcelCell.SetBorderStyle(ASides: TExcelBorderSides; const Value: TExcelBorderStyle);
 begin
-  FBorderStyle := Value;
+  for var Side := Low(TExcelBorderSide) to High(TExcelBorderSide) do
+    if Side in ASides then
+      FBorderStyle[Side] := Value;
 end;
 
-function TExcelCell.GetBorderColor: Cardinal;
+function TExcelCell.GetBorderColor(ASides: TExcelBorderSides): Cardinal;
 begin
-  Result := FBorderColor;
+  Result := 0;
+  for var Side := Low(TExcelBorderSide) to High(TExcelBorderSide) do
+    if Side in ASides then
+      Exit(FBorderColor[Side]); // returns the first matching side in Top/Right/Bottom/Left order
 end;
 
-procedure TExcelCell.SetBorderColor(const Value: Cardinal);
+procedure TExcelCell.SetBorderColor(ASides: TExcelBorderSides; const Value: Cardinal);
 begin
-  FBorderColor := Value;
+  for var Side := Low(TExcelBorderSide) to High(TExcelBorderSide) do
+    if Side in ASides then
+      FBorderColor[Side] := Value;
 end;
 
 function TExcelCell.GetHAlign: TExcelHAlign;
@@ -426,7 +442,13 @@ begin
   const HasFont = (FBold) or (FItalic) or (FUnderline) or (FFontName <> '') or (FFontSize <> 0) or (FFontColor <> 0);
   const HasFill = (FBackgroundColor <> 0);
   const HasFormat = (FCellType = TCellType.DateTime);
-  const HasBorder = (FBorderStyle <> TExcelBorderStyle.None);
+  var HasBorder := False;
+  for var Side := Low(TExcelBorderSide) to High(TExcelBorderSide) do
+    if FBorderStyle[Side] <> TExcelBorderStyle.None then
+    begin
+      HasBorder := True;
+      Break;
+    end;
   const HasAlign = (FHAlign <> TExcelHAlign.None) or (FVAlign <> TExcelVAlign.None) or (FWrapText);
   Result := (HasFont) or (HasFill) or (HasFormat) or (HasBorder) or (HasAlign);
 end;
@@ -564,24 +586,36 @@ begin
   FStyleFontName := TList<string>.Create;
   FStyleFontSize := TList<Double>.Create;
   FStyleColors := TList<Cardinal>.Create;
-  FStyleBorderStyle := TList<TExcelBorderStyle>.Create;
-  FStyleBorderColor := TList<Cardinal>.Create;
+  FStyleFontColor := TList<Cardinal>.Create;
+  FStyleBorderTopStyle := TList<TExcelBorderStyle>.Create;
+  FStyleBorderTopColor := TList<Cardinal>.Create;
+  FStyleBorderRightStyle := TList<TExcelBorderStyle>.Create;
+  FStyleBorderRightColor := TList<Cardinal>.Create;
+  FStyleBorderBottomStyle := TList<TExcelBorderStyle>.Create;
+  FStyleBorderBottomColor := TList<Cardinal>.Create;
+  FStyleBorderLeftStyle := TList<TExcelBorderStyle>.Create;
+  FStyleBorderLeftColor := TList<Cardinal>.Create;
   FStyleHAlign := TList<TExcelHAlign>.Create;
   FStyleVAlign := TList<TExcelVAlign>.Create;
   FStyleWrapText := TList<Boolean>.Create;
-  FStyleFontColor := TList<Cardinal>.Create;
   FStyleIsDate := TList<Boolean>.Create;
 end;
 
 destructor TExcelWorkbook.Destroy;
 begin
   FStyleIsDate.Free;
-  FStyleFontColor.Free;
   FStyleWrapText.Free;
   FStyleVAlign.Free;
   FStyleHAlign.Free;
-  FStyleBorderColor.Free;
-  FStyleBorderStyle.Free;
+  FStyleBorderLeftColor.Free;
+  FStyleBorderLeftStyle.Free;
+  FStyleBorderBottomColor.Free;
+  FStyleBorderBottomStyle.Free;
+  FStyleBorderRightColor.Free;
+  FStyleBorderRightStyle.Free;
+  FStyleBorderTopColor.Free;
+  FStyleBorderTopStyle.Free;
+  FStyleFontColor.Free;
   FStyleColors.Free;
   FStyleFontSize.Free;
   FStyleFontName.Free;
@@ -1073,7 +1107,7 @@ begin
       DateFlag := 2
     else
       DateFlag := 1;
-  Result := Format('%d|%d|%d|%s|%d|%d|%s|%s|%d|%d|%d|%d|%d|%d', [
+  Result := Format('%d|%d|%d|%s|%d|%d|%s|%s|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d', [
     Ord(Cell.FBold),
     Cell.FBackgroundColor,
     DateFlag,
@@ -1082,8 +1116,14 @@ begin
     Ord(Cell.FUnderline),
     Cell.FFontName,
     FontSizeStr,
-    Ord(Cell.FBorderStyle),
-    Cell.FBorderColor,
+    Ord(Cell.FBorderStyle[TExcelBorderSide.Top]),             // 8
+    Cell.FBorderColor[TExcelBorderSide.Top],                  // 9
+    Ord(Cell.FBorderStyle[TExcelBorderSide.Right]),           // 10
+    Cell.FBorderColor[TExcelBorderSide.Right],                // 11
+    Ord(Cell.FBorderStyle[TExcelBorderSide.Bottom]),          // 12
+    Cell.FBorderColor[TExcelBorderSide.Bottom],               // 13
+    Ord(Cell.FBorderStyle[TExcelBorderSide.Left]),            // 14
+    Cell.FBorderColor[TExcelBorderSide.Left],                 // 15
     Ord(Cell.FHAlign),
     Ord(Cell.FVAlign),
     Ord(Cell.FWrapText),
@@ -1094,8 +1134,23 @@ end;
 function TExcelWorkbook.BuildStyleMap: TDictionary<string, Integer>;
 begin
   Result := TDictionary<string, Integer>.Create;
-  Result.Add('0|0|0||0|0|||0|0|0|0|0|0', 0);
-  Result.Add('0|0|1||0|0|||0|0|0|0|0|0', 1);
+
+  // Built from real TExcelCell instances via GetStyleKey rather than hand-typed literal
+  // strings, so these can never drift out of sync with GetStyleKey's field list/order.
+  var PlainCell := TExcelCell.Create;
+  try
+    Result.Add(GetStyleKey(PlainCell), 0);
+  finally
+    PlainCell.Free;
+  end;
+
+  var DateCell := TExcelCell.Create;
+  try
+    DateCell.SetAsDateTime(Trunc(Now)); // Trunc -> Frac = 0 -> DateFlag = 1 (date-only, numFmtId 14)
+    Result.Add(GetStyleKey(DateCell), 1);
+  finally
+    DateCell.Free;
+  end;
 
   var NextIndex := 2;
   for var Sheet in FSheets do
@@ -1162,6 +1217,17 @@ function TExcelWorkbook.GenerateStyles(const StyleMap: TDictionary<string, Integ
     end;
   end;
 
+  function SideElement(const Tag: string; AStyle: TExcelBorderStyle; AColor: Cardinal): string;
+  begin
+    if AStyle = TExcelBorderStyle.None then
+      Exit('<' + Tag + '/>');
+    var ColorAttr := '';
+    if AColor <> 0 then
+      ColorAttr := '<color rgb="FF' + IntToHex(AColor, 6) + '"/>'
+    else
+      ColorAttr := '<color auto="1"/>';
+    Result := '<' + Tag + ' style="' + BorderStyleToString(AStyle) + '">' + ColorAttr + '</' + Tag + '>';
+  end;
 begin
   var Colors := TList<Cardinal>.Create;
   var NumFormats := TList<string>.Create;
@@ -1187,8 +1253,12 @@ begin
       if (FontKey <> '0|0|0|||0') and (not FontKeys.Contains(FontKey)) then
         FontKeys.Add(FontKey);
 
-      const BorderKey = Format('%d|%d', [Ord(Cell.FBorderStyle), Cell.FBorderColor]);
-      if (BorderKey <> '0|0') and (not BorderKeys.Contains(BorderKey)) then
+      const BorderKey = Format('%d|%d|%d|%d|%d|%d|%d|%d', [
+        Ord(Cell.FBorderStyle[TExcelBorderSide.Top]), Cell.FBorderColor[TExcelBorderSide.Top],
+        Ord(Cell.FBorderStyle[TExcelBorderSide.Right]), Cell.FBorderColor[TExcelBorderSide.Right],
+        Ord(Cell.FBorderStyle[TExcelBorderSide.Bottom]), Cell.FBorderColor[TExcelBorderSide.Bottom],
+        Ord(Cell.FBorderStyle[TExcelBorderSide.Left]), Cell.FBorderColor[TExcelBorderSide.Left]]);
+      if (BorderKey <> '0|0|0|0|0|0|0|0') and (not BorderKeys.Contains(BorderKey)) then
         BorderKeys.Add(BorderKey);
     end;
   end;
@@ -1252,19 +1322,20 @@ begin
     for var BorderKey in BorderKeys do
     begin
       const BorderParts = BorderKey.Split(['|']);
-      const BorderStyle = TExcelBorderStyle(StrToIntDef(BorderParts[0], 0));
-      const BorderColor = StrToIntDef(BorderParts[1], 0);
-      const StyleStr = BorderStyleToString(BorderStyle);
-      var ColorAttr := '';
-      if BorderColor <> 0 then
-        ColorAttr := '<color rgb="FF' + IntToHex(BorderColor, 6) + '"/>'
-      else
-        ColorAttr := '<color auto="1"/>';
+      const TopStyle    = TExcelBorderStyle(StrToIntDef(BorderParts[0], 0));
+      const TopColor    = StrToIntDef(BorderParts[1], 0);
+      const RightStyle  = TExcelBorderStyle(StrToIntDef(BorderParts[2], 0));
+      const RightColor  = StrToIntDef(BorderParts[3], 0);
+      const BottomStyle = TExcelBorderStyle(StrToIntDef(BorderParts[4], 0));
+      const BottomColor = StrToIntDef(BorderParts[5], 0);
+      const LeftStyle   = TExcelBorderStyle(StrToIntDef(BorderParts[6], 0));
+      const LeftColor   = StrToIntDef(BorderParts[7], 0);
+
       SB.Append('<border>');
-      SB.Append('<left style="' + StyleStr + '">' + ColorAttr + '</left>');
-      SB.Append('<right style="' + StyleStr + '">' + ColorAttr + '</right>');
-      SB.Append('<top style="' + StyleStr + '">' + ColorAttr + '</top>');
-      SB.Append('<bottom style="' + StyleStr + '">' + ColorAttr + '</bottom>');
+      SB.Append(SideElement('left', LeftStyle, LeftColor));
+      SB.Append(SideElement('right', RightStyle, RightColor));
+      SB.Append(SideElement('top', TopStyle, TopColor));
+      SB.Append(SideElement('bottom', BottomStyle, BottomColor));
       SB.Append('</border>');
     end;
     SB.Append('</borders>');
@@ -1295,13 +1366,21 @@ begin
         const IsUnderline = Parts[5] = '1';
         const CellFontName = Parts[6];
         const CellFontSize = Parts[7];
-        const CellBorderStyle = TExcelBorderStyle(StrToIntDef(Parts[8], 0));
-        const CellBorderColor = StrToIntDef(Parts[9], 0);
-        const CellHAlign = TExcelHAlign(StrToIntDef(Parts[10], 0));
-        const CellVAlign = TExcelVAlign(StrToIntDef(Parts[11], 0));
-        const CellWrapText = Parts[12] = '1';
-        const CellFontColor = StrToIntDef(Parts[13], 0);
+        const CellBorderTopStyle    = TExcelBorderStyle(StrToIntDef(Parts[8], 0));
+        const CellBorderTopColor    = StrToIntDef(Parts[9], 0);
+        const CellBorderRightStyle  = TExcelBorderStyle(StrToIntDef(Parts[10], 0));
+        const CellBorderRightColor  = StrToIntDef(Parts[11], 0);
+        const CellBorderBottomStyle = TExcelBorderStyle(StrToIntDef(Parts[12], 0));
+        const CellBorderBottomColor = StrToIntDef(Parts[13], 0);
+        const CellBorderLeftStyle   = TExcelBorderStyle(StrToIntDef(Parts[14], 0));
+        const CellBorderLeftColor   = StrToIntDef(Parts[15], 0);
+        const CellHAlign = TExcelHAlign(StrToIntDef(Parts[16], 0));
+        const CellVAlign = TExcelVAlign(StrToIntDef(Parts[17], 0));
+        const CellWrapText = Parts[18] = '1';
+        const CellFontColor = StrToIntDef(Parts[19], 0);
 
+        // Must match the FontKeys population format in the collection loop above,
+        // field-for-field — this 5-vs-6-field mismatch was the original FontColor bug.
         const FontKey = Format('%d|%d|%d|%s|%s|%d', [
           Ord(IsBold), Ord(IsItalic), Ord(IsUnderline), CellFontName, CellFontSize, CellFontColor]);
         var FontId := 0;
@@ -1312,9 +1391,13 @@ begin
         if BgColor <> 0 then
           FillId := 2 + Colors.IndexOf(BgColor);
 
-        const BorderKey = Format('%d|%d', [Ord(CellBorderStyle), CellBorderColor]);
+        const BorderKey = Format('%d|%d|%d|%d|%d|%d|%d|%d', [
+          Ord(CellBorderTopStyle), CellBorderTopColor,
+          Ord(CellBorderRightStyle), CellBorderRightColor,
+          Ord(CellBorderBottomStyle), CellBorderBottomColor,
+          Ord(CellBorderLeftStyle), CellBorderLeftColor]);
         var BorderId := 0;
-        if BorderKey <> '0|0' then
+        if BorderKey <> '0|0|0|0|0|0|0|0' then
           BorderId := 1 + BorderKeys.IndexOf(BorderKey);
 
         // A user-supplied NumberFormat overrides the default date format, so custom
@@ -1429,6 +1512,22 @@ procedure TExcelWorkbook.ParseStyles(const Xml: string);
     else Result := TExcelVAlign.None;
   end;
 
+  procedure ParseSide(const BorderXml, Tag: string; out AStyle: TExcelBorderStyle; out AColor: Cardinal);
+  begin
+    const SideMatch = TRegEx.Match(BorderXml, '<' + Tag + '\s+style="([^"]*)"', [roIgnoreCase]);
+    if SideMatch.Success then
+      AStyle := StringToBorderStyle(SideMatch.Groups[1].Value)
+    else
+      AStyle := TExcelBorderStyle.None;
+
+    const ColorMatch = TRegEx.Match(BorderXml,
+      '<' + Tag + '[^>]*>.*?<color\s+rgb="FF([0-9A-Fa-f]{6})"', [roIgnoreCase, roSingleLine]);
+    if ColorMatch.Success then
+      AColor := StrToInt64Def('$' + ColorMatch.Groups[1].Value, 0)
+    else
+      AColor := 0;
+  end;
+
   // Built-in numFmtId values 14-22 are the standard date/time formats
   // (e.g. 14 = m/d/yyyy, 22 = m/d/yyyy h:mm); 45-47 are the built-in
   // duration/time formats (mm:ss, [h]:mm:ss, mmss.0). IDs 0-163 are
@@ -1473,12 +1572,18 @@ begin
   FStyleFontName.Clear;
   FStyleFontSize.Clear;
   FStyleColors.Clear;
-  FStyleBorderStyle.Clear;
-  FStyleBorderColor.Clear;
+  FStyleFontColor.Clear;
+  FStyleBorderTopStyle.Clear;
+  FStyleBorderTopColor.Clear;
+  FStyleBorderRightStyle.Clear;
+  FStyleBorderRightColor.Clear;
+  FStyleBorderBottomStyle.Clear;
+  FStyleBorderBottomColor.Clear;
+  FStyleBorderLeftStyle.Clear;
+  FStyleBorderLeftColor.Clear;
   FStyleHAlign.Clear;
   FStyleVAlign.Clear;
   FStyleWrapText.Clear;
-  FStyleFontColor.Clear;
   FStyleIsDate.Clear;
 
   var FontsBold := TList<Boolean>.Create;
@@ -1487,8 +1592,14 @@ begin
   var FontsName := TList<string>.Create;
   var FontsSize := TList<Double>.Create;
   var Fills := TList<Cardinal>.Create;
-  var BorderStyles := TList<TExcelBorderStyle>.Create;
-  var BorderColors := TList<Cardinal>.Create;
+  var TopStyles := TList<TExcelBorderStyle>.Create;
+  var TopColors := TList<Cardinal>.Create;
+  var RightStyles := TList<TExcelBorderStyle>.Create;
+  var RightColors := TList<Cardinal>.Create;
+  var BottomStyles := TList<TExcelBorderStyle>.Create;
+  var BottomColors := TList<Cardinal>.Create;
+  var LeftStyles := TList<TExcelBorderStyle>.Create;
+  var LeftColors := TList<Cardinal>.Create;
   var FontsColor := TList<Cardinal>.Create;
   var CustomNumFmts := TDictionary<Integer, string>.Create;
   try
@@ -1577,24 +1688,34 @@ begin
     const BorderMatches = TRegEx.Matches(Xml, '<border\s*/>', [roIgnoreCase]);
     for var Match in BorderMatches do
     begin
-      BorderStyles.Add(TExcelBorderStyle.None);
-      BorderColors.Add(0);
+      TopStyles.Add(TExcelBorderStyle.None);
+      TopColors.Add(0);
+      RightStyles.Add(TExcelBorderStyle.None);
+      RightColors.Add(0);
+      BottomStyles.Add(TExcelBorderStyle.None);
+      BottomColors.Add(0);
+      LeftStyles.Add(TExcelBorderStyle.None);
+      LeftColors.Add(0);
     end;
     const BorderFullMatches = TRegEx.Matches(Xml, '<border>(.*?)</border>', [roIgnoreCase, roSingleLine]);
     for var Match in BorderFullMatches do
     begin
       const BorderXml = Match.Groups[1].Value;
-      const LeftMatch = TRegEx.Match(BorderXml, '<left\s+style="([^"]*)"', [roIgnoreCase]);
-      if LeftMatch.Success then
-        BorderStyles.Add(StringToBorderStyle(LeftMatch.Groups[1].Value))
-      else
-        BorderStyles.Add(TExcelBorderStyle.None);
+      var AStyle: TExcelBorderStyle;
+      var AColor: Cardinal;
 
-      const BColorMatch = TRegEx.Match(BorderXml, '<left[^>]*>.*?<color\s+rgb="FF([0-9A-Fa-f]{6})"', [roIgnoreCase, roSingleLine]);
-      if BColorMatch.Success then
-        BorderColors.Add(StrToInt64Def('$' + BColorMatch.Groups[1].Value, 0))
-      else
-        BorderColors.Add(0);
+      ParseSide(BorderXml, 'top', AStyle, AColor);
+      TopStyles.Add(AStyle);
+      TopColors.Add(AColor);
+      ParseSide(BorderXml, 'right', AStyle, AColor);
+      RightStyles.Add(AStyle);
+      RightColors.Add(AColor);
+      ParseSide(BorderXml, 'bottom', AStyle, AColor);
+      BottomStyles.Add(AStyle);
+      BottomColors.Add(AColor);
+      ParseSide(BorderXml, 'left', AStyle, AColor);
+      LeftStyles.Add(AStyle);
+      LeftColors.Add(AColor);
     end;
 
     const CellXfsMatch = TRegEx.Match(Xml, '<cellXfs[^>]*>(.*?)</cellXfs>', [roIgnoreCase, roSingleLine]);
@@ -1623,11 +1744,6 @@ begin
         var FontId := 0;
         if FontIdMatch.Success then
           FontId := StrToIntDef(FontIdMatch.Groups[1].Value, 0);
-
-        var FColor: Cardinal := 0;
-        if FontId < FontsColor.Count then
-          FColor := FontsColor[FontId];
-        FStyleFontColor.Add(FColor);
 
         const FillIdMatch = TRegEx.Match(XfXml, 'fillId="(\d+)"', [roIgnoreCase]);
         var FillId := 0;
@@ -1660,15 +1776,43 @@ begin
           BgColor := Fills[FillId];
         FStyleColors.Add(BgColor);
 
-        if BorderId < BorderStyles.Count then
-          FStyleBorderStyle.Add(BorderStyles[BorderId])
-        else
-          FStyleBorderStyle.Add(TExcelBorderStyle.None);
+        var FColor: Cardinal := 0;
+        if FontId < FontsColor.Count then
+          FColor := FontsColor[FontId];
+        FStyleFontColor.Add(FColor);
 
-        if BorderId < BorderColors.Count then
-          FStyleBorderColor.Add(BorderColors[BorderId])
+        if BorderId < TopStyles.Count then
+          FStyleBorderTopStyle.Add(TopStyles[BorderId])
         else
-          FStyleBorderColor.Add(0);
+          FStyleBorderTopStyle.Add(TExcelBorderStyle.None);
+        if BorderId < TopColors.Count then
+          FStyleBorderTopColor.Add(TopColors[BorderId])
+        else
+          FStyleBorderTopColor.Add(0);
+        if BorderId < RightStyles.Count then
+          FStyleBorderRightStyle.Add(RightStyles[BorderId])
+        else
+          FStyleBorderRightStyle.Add(TExcelBorderStyle.None);
+        if BorderId < RightColors.Count then
+          FStyleBorderRightColor.Add(RightColors[BorderId])
+        else
+          FStyleBorderRightColor.Add(0);
+        if BorderId < BottomStyles.Count then
+          FStyleBorderBottomStyle.Add(BottomStyles[BorderId])
+        else
+          FStyleBorderBottomStyle.Add(TExcelBorderStyle.None);
+        if BorderId < BottomColors.Count then
+          FStyleBorderBottomColor.Add(BottomColors[BorderId])
+        else
+          FStyleBorderBottomColor.Add(0);
+        if BorderId < LeftStyles.Count then
+          FStyleBorderLeftStyle.Add(LeftStyles[BorderId])
+        else
+          FStyleBorderLeftStyle.Add(TExcelBorderStyle.None);
+        if BorderId < LeftColors.Count then
+          FStyleBorderLeftColor.Add(LeftColors[BorderId])
+        else
+          FStyleBorderLeftColor.Add(0);
 
         const AlignMatch = TRegEx.Match(XfXml, '<alignment([^/]*)/>', [roIgnoreCase]);
         if AlignMatch.Success then
@@ -1696,8 +1840,14 @@ begin
     end;
   finally
     CustomNumFmts.Free;
-    BorderColors.Free;
-    BorderStyles.Free;
+    LeftColors.Free;
+    LeftStyles.Free;
+    BottomColors.Free;
+    BottomStyles.Free;
+    RightColors.Free;
+    RightStyles.Free;
+    TopColors.Free;
+    TopStyles.Free;
     Fills.Free;
     FontsColor.Free;
     FontsSize.Free;
@@ -1936,10 +2086,22 @@ begin
             Cell.FBackgroundColor := FStyleColors[StyleIdx];
           if (StyleIdx < FStyleFontColor.Count) and (FStyleFontColor[StyleIdx] <> 0) then
             Cell.FFontColor := FStyleFontColor[StyleIdx];
-          if (StyleIdx < FStyleBorderStyle.Count) and (FStyleBorderStyle[StyleIdx] <> TExcelBorderStyle.None) then
-            Cell.FBorderStyle := FStyleBorderStyle[StyleIdx];
-          if (StyleIdx < FStyleBorderColor.Count) and (FStyleBorderColor[StyleIdx] <> 0) then
-            Cell.FBorderColor := FStyleBorderColor[StyleIdx];
+          if (StyleIdx < FStyleBorderTopStyle.Count) and (FStyleBorderTopStyle[StyleIdx] <> TExcelBorderStyle.None) then
+            Cell.FBorderStyle[TExcelBorderSide.Top] := FStyleBorderTopStyle[StyleIdx];
+          if (StyleIdx < FStyleBorderTopColor.Count) and (FStyleBorderTopColor[StyleIdx] <> 0) then
+            Cell.FBorderColor[TExcelBorderSide.Top] := FStyleBorderTopColor[StyleIdx];
+          if (StyleIdx < FStyleBorderRightStyle.Count) and (FStyleBorderRightStyle[StyleIdx] <> TExcelBorderStyle.None) then
+            Cell.FBorderStyle[TExcelBorderSide.Right] := FStyleBorderRightStyle[StyleIdx];
+          if (StyleIdx < FStyleBorderRightColor.Count) and (FStyleBorderRightColor[StyleIdx] <> 0) then
+            Cell.FBorderColor[TExcelBorderSide.Right] := FStyleBorderRightColor[StyleIdx];
+          if (StyleIdx < FStyleBorderBottomStyle.Count) and (FStyleBorderBottomStyle[StyleIdx] <> TExcelBorderStyle.None) then
+            Cell.FBorderStyle[TExcelBorderSide.Bottom] := FStyleBorderBottomStyle[StyleIdx];
+          if (StyleIdx < FStyleBorderBottomColor.Count) and (FStyleBorderBottomColor[StyleIdx] <> 0) then
+            Cell.FBorderColor[TExcelBorderSide.Bottom] := FStyleBorderBottomColor[StyleIdx];
+          if (StyleIdx < FStyleBorderLeftStyle.Count) and (FStyleBorderLeftStyle[StyleIdx] <> TExcelBorderStyle.None) then
+            Cell.FBorderStyle[TExcelBorderSide.Left] := FStyleBorderLeftStyle[StyleIdx];
+          if (StyleIdx < FStyleBorderLeftColor.Count) and (FStyleBorderLeftColor[StyleIdx] <> 0) then
+            Cell.FBorderColor[TExcelBorderSide.Left] := FStyleBorderLeftColor[StyleIdx];
           if (StyleIdx < FStyleHAlign.Count) and (FStyleHAlign[StyleIdx] <> TExcelHAlign.None) then
             Cell.FHAlign := FStyleHAlign[StyleIdx];
           if (StyleIdx < FStyleVAlign.Count) and (FStyleVAlign[StyleIdx] <> TExcelVAlign.None) then
@@ -1980,10 +2142,22 @@ begin
           Cell.FBackgroundColor := FStyleColors[StyleIdx];
         if (StyleIdx < FStyleFontColor.Count) and (FStyleFontColor[StyleIdx] <> 0) then
           Cell.FFontColor := FStyleFontColor[StyleIdx];
-        if (StyleIdx < FStyleBorderStyle.Count) and (FStyleBorderStyle[StyleIdx] <> TExcelBorderStyle.None) then
-          Cell.FBorderStyle := FStyleBorderStyle[StyleIdx];
-        if (StyleIdx < FStyleBorderColor.Count) and (FStyleBorderColor[StyleIdx] <> 0) then
-          Cell.FBorderColor := FStyleBorderColor[StyleIdx];
+        if (StyleIdx < FStyleBorderTopStyle.Count) and (FStyleBorderTopStyle[StyleIdx] <> TExcelBorderStyle.None) then
+          Cell.FBorderStyle[TExcelBorderSide.Top] := FStyleBorderTopStyle[StyleIdx];
+        if (StyleIdx < FStyleBorderTopColor.Count) and (FStyleBorderTopColor[StyleIdx] <> 0) then
+          Cell.FBorderColor[TExcelBorderSide.Top] := FStyleBorderTopColor[StyleIdx];
+        if (StyleIdx < FStyleBorderRightStyle.Count) and (FStyleBorderRightStyle[StyleIdx] <> TExcelBorderStyle.None) then
+          Cell.FBorderStyle[TExcelBorderSide.Right] := FStyleBorderRightStyle[StyleIdx];
+        if (StyleIdx < FStyleBorderRightColor.Count) and (FStyleBorderRightColor[StyleIdx] <> 0) then
+          Cell.FBorderColor[TExcelBorderSide.Right] := FStyleBorderRightColor[StyleIdx];
+        if (StyleIdx < FStyleBorderBottomStyle.Count) and (FStyleBorderBottomStyle[StyleIdx] <> TExcelBorderStyle.None) then
+          Cell.FBorderStyle[TExcelBorderSide.Bottom] := FStyleBorderBottomStyle[StyleIdx];
+        if (StyleIdx < FStyleBorderBottomColor.Count) and (FStyleBorderBottomColor[StyleIdx] <> 0) then
+          Cell.FBorderColor[TExcelBorderSide.Bottom] := FStyleBorderBottomColor[StyleIdx];
+        if (StyleIdx < FStyleBorderLeftStyle.Count) and (FStyleBorderLeftStyle[StyleIdx] <> TExcelBorderStyle.None) then
+          Cell.FBorderStyle[TExcelBorderSide.Left] := FStyleBorderLeftStyle[StyleIdx];
+        if (StyleIdx < FStyleBorderLeftColor.Count) and (FStyleBorderLeftColor[StyleIdx] <> 0) then
+          Cell.FBorderColor[TExcelBorderSide.Left] := FStyleBorderLeftColor[StyleIdx];
         if (StyleIdx < FStyleHAlign.Count) and (FStyleHAlign[StyleIdx] <> TExcelHAlign.None) then
           Cell.FHAlign := FStyleHAlign[StyleIdx];
         if (StyleIdx < FStyleVAlign.Count) and (FStyleVAlign[StyleIdx] <> TExcelVAlign.None) then

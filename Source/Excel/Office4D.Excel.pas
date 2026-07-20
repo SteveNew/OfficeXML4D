@@ -13,6 +13,8 @@ type
   TExcelBorderStyle = (None, Thin, Medium, Thick, Dashed, Dotted, Double);
   TExcelHAlign = (None, Left, Center, Right, Justify);
   TExcelVAlign = (None, Top, Center, Bottom);
+  TExcelBorderSide = (Top, Right, Bottom, Left);
+  TExcelBorderSides = set of TExcelBorderSide;
   {$SCOPEDENUMS OFF}
 
   IExcelCell = interface;
@@ -46,10 +48,10 @@ type
     procedure SetBackgroundColor(const Value: Cardinal);
     function GetNumberFormat: string;
     procedure SetNumberFormat(const Value: string);
-    function GetBorderStyle: TExcelBorderStyle;
-    procedure SetBorderStyle(const Value: TExcelBorderStyle);
-    function GetBorderColor: Cardinal;
-    procedure SetBorderColor(const Value: Cardinal);
+    function GetBorderStyle(ASides: TExcelBorderSides): TExcelBorderStyle;
+    procedure SetBorderStyle(ASides: TExcelBorderSides; const Value: TExcelBorderStyle);
+    function GetBorderColor(ASides: TExcelBorderSides): Cardinal;
+    procedure SetBorderColor(ASides: TExcelBorderSides; const Value: Cardinal);
     function GetHAlign: TExcelHAlign;
     procedure SetHAlign(const Value: TExcelHAlign);
     function GetVAlign: TExcelVAlign;
@@ -72,8 +74,8 @@ type
     property FontSize: Double read GetFontSize write SetFontSize;
     property BackgroundColor: Cardinal read GetBackgroundColor write SetBackgroundColor;
     property NumberFormat: string read GetNumberFormat write SetNumberFormat;
-    property BorderStyle: TExcelBorderStyle read GetBorderStyle write SetBorderStyle;
-    property BorderColor: Cardinal read GetBorderColor write SetBorderColor;
+    property BorderStyle[ASides: TExcelBorderSides]: TExcelBorderStyle read GetBorderStyle write SetBorderStyle;
+    property BorderColor[ASides: TExcelBorderSides]: Cardinal read GetBorderColor write SetBorderColor;
     property HAlign: TExcelHAlign read GetHAlign write SetHAlign;
     property VAlign: TExcelVAlign read GetVAlign write SetVAlign;
     property WrapText: Boolean read GetWrapText write SetWrapText;
@@ -125,6 +127,9 @@ type
   public
     class function Create: IExcelWorkbook;
   end;
+
+const
+  AllBorderSides: TExcelBorderSides = [TExcelBorderSide.Top, TExcelBorderSide.Right, TExcelBorderSide.Bottom, TExcelBorderSide.Left];
 
 implementation
 
