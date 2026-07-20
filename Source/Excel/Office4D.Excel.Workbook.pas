@@ -92,6 +92,7 @@ type
     FColumnWidths: TDictionary<string, Double>;
     FRowHeights: TDictionary<Integer, Double>;
     FMergedRanges: TList<string>;
+    FVisibility: TExcelSheetVisibility;
 
     class function ColumnLetterToNumber(const Column: string): Integer; static;
   public
@@ -110,6 +111,9 @@ type
     procedure MergeCells(const Range: string);
     function GetMergedRanges: TArray<string>;
 
+    function GetVisibility: TExcelSheetVisibility;
+    procedure SetVisibility(const Value: TExcelSheetVisibility);
+
     procedure SetCellValue(const Address, Value: string; IsString: Boolean);
     procedure SetBooleanValue(const Address: string; Value: Boolean);
     procedure SetCellFormula(const Address, Formula, Value: string);
@@ -121,6 +125,7 @@ type
     property ColumnWidths: TDictionary<string, Double> read FColumnWidths;
     property RowHeights: TDictionary<Integer, Double> read FRowHeights;
     property MergedRangesList: TList<string> read FMergedRanges;
+    property Visibility: TExcelSheetVisibility read FVisibility write FVisibility;
   end;
 
   TExcelWorkbook = class(TInterfacedObject, IExcelWorkbook)
@@ -526,6 +531,16 @@ begin
   Result := FMergedRanges.ToArray;
 end;
 
+function TExcelSheet.GetVisibility: TExcelSheetVisibility;
+begin
+  Result := FVisibility;
+end;
+
+procedure TExcelSheet.SetVisibility(const Value: TExcelSheetVisibility);
+begin
+  FVisibility := Value;
+end;
+
 class function TExcelSheet.ColumnLetterToNumber(const Column: string): Integer;
 begin
   Result := 0;
@@ -873,13 +888,31 @@ end;
 
 function TExcelWorkbook.GenerateWorkbook: string;
 begin
+  var HasVisibleSheet := False;
+  for var Sheet in FSheets do
+    if Sheet.Visibility = TExcelSheetVisibility.Visible then
+    begin
+      HasVisibleSheet := True;
+      Break;
+    end;
+  // Excel refuses to open a workbook in which every sheet is hidden.
+  if (FSheets.Count > 0) and not HasVisibleSheet then
+    raise EExcelWorkbookException.Create('A workbook must contain at least one visible sheet');
+
   var SB := TStringBuilder.Create;
   try
     SB.Append(XmlDeclaration);
     SB.Append('<workbook xmlns="' + SpreadsheetNs + '" xmlns:r="' + OfficeDocRelsNs + '">');
     SB.Append('<sheets>');
     for var I := 0 to FSheets.Count - 1 do
-      SB.Append('<sheet name="' + FSheets[I].Name + '" sheetId="' + IntToStr(I + 1) + '" r:id="rId' + IntToStr(I + 1) + '"/>');
+    begin
+      var StateAttr := '';
+      if FSheets[I].Visibility = TExcelSheetVisibility.Hidden then
+        StateAttr := ' state="hidden"'
+      else if FSheets[I].Visibility = TExcelSheetVisibility.VeryHidden then
+        StateAttr := ' state="veryHidden"';
+      SB.Append('<sheet name="' + FSheets[I].Name + '" sheetId="' + IntToStr(I + 1) + '"' + StateAttr + ' r:id="rId' + IntToStr(I + 1) + '"/>');
+    end;
     SB.Append('</sheets>');
     SB.Append('</workbook>');
     Result := SB.ToString;
@@ -1455,10 +1488,21 @@ end;
 
 procedure TExcelWorkbook.ParseWorkbook(const Xml: string);
 begin
-  const Matches = TRegEx.Matches(Xml, '<sheet\s+name="([^"]+)"[^/>]*(?:/>|>)', [roIgnoreCase]);
+  const Matches = TRegEx.Matches(Xml, '<sheet\s+name="([^"]+)"([^>]*?)(?:/>|>)', [roIgnoreCase]);
   for var Match in Matches do
     if Match.Groups.Count > 1 then
-      FSheets.Add(TExcelSheet.Create(Match.Groups[1].Value));
+    begin
+      const Sheet = TExcelSheet.Create(Match.Groups[1].Value);
+      const StateMatch = TRegEx.Match(Match.Groups[2].Value, 'state="([^"]+)"', [roIgnoreCase]);
+      if StateMatch.Success then
+      begin
+        if SameText(StateMatch.Groups[1].Value, 'hidden') then
+          Sheet.Visibility := TExcelSheetVisibility.Hidden
+        else if SameText(StateMatch.Groups[1].Value, 'veryHidden') then
+          Sheet.Visibility := TExcelSheetVisibility.VeryHidden;
+      end;
+      FSheets.Add(Sheet);
+    end;
 end;
 
 procedure TExcelWorkbook.ParseSharedStrings(const Xml: string);
