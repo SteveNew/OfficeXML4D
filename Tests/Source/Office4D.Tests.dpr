@@ -6,7 +6,9 @@ program Office4D.Tests;
 
 uses
   System.SysUtils,
+  DUnitX.CommandLine.Options,
   DUnitX.Loggers.Console,
+  DUnitX.Loggers.Xml.JUnit,
   DUnitX.Loggers.Xml.NUnit,
   DUnitX.TestFramework,
   Office4D.Types in '..\..\Source\Core\Office4D.Types.pas',
@@ -36,12 +38,19 @@ var
   Runner: ITestRunner;
   Results: IRunResults;
   Logger: ITestLogger;
-  NUnitLogger: ITestLogger;
+  XmlLogger: ITestLogger;
+  UseJUnit: Boolean = False;
 
 begin
   ReportMemoryLeaksOnShutdown := True;
 
   try
+    TOptionsRegistry.RegisterOption<Boolean>('JUnit','','Write JUnit XML output instead of NUnit',
+      procedure(Value: Boolean)
+      begin
+        UseJUnit := Value;
+      end).HasValue := False;
+
     TDUnitX.CheckCommandLine;
 
     Runner := TDUnitX.CreateRunner;
@@ -50,8 +59,11 @@ begin
     Logger := TDUnitXConsoleLogger.Create(True);
     Runner.AddLogger(Logger);
 
-    NUnitLogger := TDUnitXXMLNUnitFileLogger.Create(TDUnitX.Options.XMLOutputFile);
-    Runner.AddLogger(NUnitLogger);
+    if UseJUnit then
+      XmlLogger := TDUnitXXMLJUnitFileLogger.Create(TDUnitX.Options.XMLOutputFile)
+    else
+      XmlLogger := TDUnitXXMLNUnitFileLogger.Create(TDUnitX.Options.XMLOutputFile);
+    Runner.AddLogger(XmlLogger);
     Runner.FailsOnNoAsserts := False;
 
     Results := Runner.Execute;
