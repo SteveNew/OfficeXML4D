@@ -1,4 +1,4 @@
-﻿unit Office4D.Excel.Workbook;
+unit Office4D.Excel.Workbook;
 
 interface
 
