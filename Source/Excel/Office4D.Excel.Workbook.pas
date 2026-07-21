@@ -98,8 +98,12 @@ type
     FRowHeights: TDictionary<Integer, Double>;
     FMergedRanges: TList<string>;
     FVisibility: TExcelSheetVisibility;
+    FFrozenRows: Integer;
+    FFrozenColumns: Integer;
 
     class function ColumnLetterToNumber(const Column: string): Integer; static;
+    class function ColumnNumberToLetters(const Column: Integer): string; static;
+    class procedure ParseCellAddress(const Address: string; out Col, Row: Integer); static;
   public
     constructor Create(const Name: string);
     destructor Destroy; override;
@@ -119,6 +123,11 @@ type
     function GetVisibility: TExcelSheetVisibility;
     procedure SetVisibility(const Value: TExcelSheetVisibility);
 
+    procedure FreezePanes(const TopLeftCell: string);
+    procedure UnfreezePanes;
+    function GetFrozenRows: Integer;
+    function GetFrozenColumns: Integer;
+
     procedure SetCellValue(const Address, Value: string; IsString: Boolean);
     procedure SetBooleanValue(const Address: string; Value: Boolean);
     procedure SetCellFormula(const Address, Formula, Value: string);
@@ -131,6 +140,8 @@ type
     property RowHeights: TDictionary<Integer, Double> read FRowHeights;
     property MergedRangesList: TList<string> read FMergedRanges;
     property Visibility: TExcelSheetVisibility read FVisibility write FVisibility;
+    property FrozenRows: Integer read GetFrozenRows;
+    property FrozenColumns: Integer read GetFrozenColumns;
   end;
 
   TExcelWorkbook = class(TInterfacedObject, IExcelWorkbook)
@@ -574,6 +585,33 @@ begin
   FVisibility := Value;
 end;
 
+procedure TExcelSheet.FreezePanes(const TopLeftCell: string);
+var
+  Col, Row: Integer;
+begin
+  ParseCellAddress(TopLeftCell, Col, Row);
+  // TopLeftCell is the first *unfrozen* (scrollable) cell -- e.g. 'C2' means columns
+  // A-B and row 1 are frozen, so the frozen counts are one less than the parsed position.
+  FFrozenColumns := Max(0, Col - 1);
+  FFrozenRows := Max(0, Row - 1);
+end;
+
+procedure TExcelSheet.UnfreezePanes;
+begin
+  FFrozenRows := 0;
+  FFrozenColumns := 0;
+end;
+
+function TExcelSheet.GetFrozenRows: Integer;
+begin
+  Result := FFrozenRows;
+end;
+
+function TExcelSheet.GetFrozenColumns: Integer;
+begin
+  Result := FFrozenColumns;
+end;
+
 class function TExcelSheet.ColumnLetterToNumber(const Column: string): Integer;
 begin
   Result := 0;
@@ -583,6 +621,35 @@ begin
     const CharVal = Ord(UpperColumn[CharIndex]) - Ord('A') + 1;
     Result := Result * 26 + CharVal;
   end;
+end;
+
+class function TExcelSheet.ColumnNumberToLetters(const Column: Integer): string;
+begin
+  Result := '';
+  var ColNum := Column;
+  while ColNum > 0 do
+  begin
+    const Remainder = (ColNum - 1) mod 26;
+    Result := Chr(Ord('A') + Remainder) + Result;
+    ColNum := (ColNum - 1) div 26;
+  end;
+end;
+
+class procedure TExcelSheet.ParseCellAddress(const Address: string; out Col, Row: Integer);
+begin
+  const UpperAddress = UpperCase(Trim(Address));
+  var ColPart := '';
+  var RowPart := '';
+  for var CharIndex := 1 to Length(UpperAddress) do
+    if CharInSet(UpperAddress[CharIndex], ['A'..'Z']) then
+      ColPart := ColPart + UpperAddress[CharIndex]
+    else
+      RowPart := RowPart + UpperAddress[CharIndex];
+
+  if (ColPart = '') or (RowPart = '') or not TryStrToInt(RowPart, Row) then
+    raise EExcelWorkbookException.CreateFmt('Invalid cell address: "%s"', [Address]);
+
+  Col := ColumnLetterToNumber(ColPart);
 end;
 
 procedure TExcelSheet.SetCellValue(const Address, Value: string; IsString: Boolean);
@@ -979,6 +1046,24 @@ begin
   try
     SB.Append(XmlDeclaration);
     SB.Append('<worksheet xmlns="' + SpreadsheetNs + '">');
+
+    const HasFrozenPanes = (Sheet.FrozenRows > 0) or (Sheet.FrozenColumns > 0);
+    if HasFrozenPanes then
+    begin
+      const TopLeftCell = TExcelSheet.ColumnNumberToLetters(Sheet.FrozenColumns + 1) + IntToStr(Sheet.FrozenRows + 1);
+      var ActivePane := 'topLeft';
+      if (Sheet.FrozenRows > 0) and (Sheet.FrozenColumns > 0) then
+        ActivePane := 'bottomRight'
+      else if Sheet.FrozenRows > 0 then
+        ActivePane := 'bottomLeft'
+      else if Sheet.FrozenColumns > 0 then
+        ActivePane := 'topRight';
+
+      SB.Append('<sheetViews><sheetView workbookViewId="0">');
+      SB.Append('<pane xSplit="' + IntToStr(Sheet.FrozenColumns) + '" ySplit="' + IntToStr(Sheet.FrozenRows) +
+        '" topLeftCell="' + TopLeftCell + '" activePane="' + ActivePane + '" state="frozen"/>');
+      SB.Append('</sheetView></sheetViews>');
+    end;
 
     const HasColumnWidths = (Sheet.ColumnWidths.Count > 0);
     if HasColumnWidths then
@@ -1993,15 +2078,7 @@ begin
     begin
       var ColNum := TExcelSheet.ColumnLetterToNumber(ColPart);
       Inc(ColNum, ColDelta);
-      // Convert column number back to letters
-      var ColLetters := '';
-      while ColNum > 0 do
-      begin
-        const Remainder = (ColNum - 1) mod 26;
-        ColLetters := Chr(Ord('A') + Remainder) + ColLetters;
-        ColNum := (ColNum - 1) div 26;
-      end;
-      NewColPart := ColLetters;
+      NewColPart := TExcelSheet.ColumnNumberToLetters(ColNum);
     end;
 
     if (NewColPart <> ColPart) or (NewRowPart <> RowPart) then
@@ -2019,6 +2096,20 @@ end;
 
 procedure TExcelWorkbook.ParseSheet(const Sheet: TExcelSheet; const Xml: string);
 begin
+  const PaneMatch = TRegEx.Match(Xml, '<pane\s+[^/]*/>', [roIgnoreCase]);
+  if PaneMatch.Success then
+  begin
+    const PaneXml = PaneMatch.Value;
+    const XSplitMatch = TRegEx.Match(PaneXml, 'xSplit="([^"]*)"', [roIgnoreCase]);
+    const YSplitMatch = TRegEx.Match(PaneXml, 'ySplit="([^"]*)"', [roIgnoreCase]);
+    // xSplit/ySplit are declared as xsd:double in the schema, though for a pure freeze
+    // (rather than an unfrozen split) they're always written as whole numbers in practice.
+    if XSplitMatch.Success then
+      Sheet.FFrozenColumns := Trunc(StrToFloatDef(XSplitMatch.Groups[1].Value, 0, TFormatSettings.Invariant));
+    if YSplitMatch.Success then
+      Sheet.FFrozenRows := Trunc(StrToFloatDef(YSplitMatch.Groups[1].Value, 0, TFormatSettings.Invariant));
+  end;
+
   const ColMatches = TRegEx.Matches(Xml, '<col\s[^/]*/>', [roIgnoreCase]);
   for var ColMatch in ColMatches do
   begin
@@ -2036,13 +2127,7 @@ begin
         const ColMax = StrToIntDef(MaxMatch.Groups[1].Value, 0);
         for var ColNum := ColMin to ColMax do
         begin
-          var ColLetters := '';
-          var N := ColNum;
-          while N > 0 do
-          begin
-            ColLetters := Chr(Ord('A') + (N - 1) mod 26) + ColLetters;
-            N := (N - 1) div 26;
-          end;
+          const ColLetters = TExcelSheet.ColumnNumberToLetters(ColNum);
           Sheet.SetColumnWidth(ColLetters, Width);
         end;
       end;

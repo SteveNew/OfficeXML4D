@@ -110,12 +110,19 @@ type
     function GetVisibility: TExcelSheetVisibility;
     procedure SetVisibility(const Value: TExcelSheetVisibility);
 
+    procedure FreezePanes(const TopLeftCell: string);
+    procedure UnfreezePanes;
+    function GetFrozenRows: Integer;
+    function GetFrozenColumns: Integer;
+
     function GetCells: TDictionary<string, IExcelCell>;
 
     property Name: string read GetName;
     property Cell[const Address: string]: IExcelCell read GetCell;
     property Cells: TDictionary<string, IExcelCell> read GetCells;
     property Visibility: TExcelSheetVisibility read GetVisibility write SetVisibility;
+    property FrozenRows: Integer read GetFrozenRows;
+    property FrozenColumns: Integer read GetFrozenColumns;
   end;
 
   IExcelWorkbook = interface
