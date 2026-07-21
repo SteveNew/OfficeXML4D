@@ -34,7 +34,8 @@ uses
   Office4D.Tests.PowerPoint in 'Office4D.Tests.PowerPoint.pas',
   Office4D.Tests.Excel.BorderSides in 'Office4D.Tests.Excel.BorderSides.pas',
   Office4D.Tests.Excel.FontStyle in 'Office4D.Tests.Excel.FontStyle.pas',
-  Office4D.Tests.Excel.FreezePanes in 'Office4D.Tests.Excel.FreezePanes.pas';
+  Office4D.Tests.Excel.FreezePanes in 'Office4D.Tests.Excel.FreezePanes.pas',
+  Office4D.Tests.Excel.Notes in 'Office4D.Tests.Excel.Notes.pas';
 
 var
   Runner: ITestRunner;

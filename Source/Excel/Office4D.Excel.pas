@@ -115,6 +115,9 @@ type
     function GetFrozenRows: Integer;
     function GetFrozenColumns: Integer;
 
+    function GetNote(const Address: string): string;
+    procedure SetNote(const Address: string; const Value: string);
+
     function GetCells: TDictionary<string, IExcelCell>;
 
     property Name: string read GetName;
@@ -123,6 +126,7 @@ type
     property Visibility: TExcelSheetVisibility read GetVisibility write SetVisibility;
     property FrozenRows: Integer read GetFrozenRows;
     property FrozenColumns: Integer read GetFrozenColumns;
+    property Note[const Address: string]: string read GetNote write SetNote;
   end;
 
   IExcelWorkbook = interface
