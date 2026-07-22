@@ -218,6 +218,9 @@ type
 
     [Test]
     procedure LoadFromFile_ExcelAuthoredNumberFormats_ArePreserved;
+
+    [Test]
+    procedure LoadFromFile_ExcelAuthoredCurrencyAndAccountingFormats_ArePreserved;
   end;
 
 implementation
@@ -1388,6 +1391,80 @@ begin
     Workbook2.LoadFromFile(FTempFile);
     Assert.AreEqual('0.000', Workbook2.Sheets[0].Cell['A1'].NumberFormat, 'Custom format should survive a resave');
     Assert.AreEqual('0%', Workbook2.Sheets[0].Cell['B1'].NumberFormat, 'Built-in format should survive a resave');
+  finally
+    Zip.Free;
+    if TFile.Exists(SourceFile) then
+      TFile.Delete(SourceFile);
+  end;
+end;
+
+procedure TExcelWriteTests.LoadFromFile_ExcelAuthoredCurrencyAndAccountingFormats_ArePreserved;
+
+  procedure AddPart(const Zip: TZipFile; const PartName, Content: string);
+  begin
+    Zip.Add(TEncoding.UTF8.GetBytes(Content), PartName);
+  end;
+
+const
+  SpreadsheetNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  OfficeDocRelsNs = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  CurrencyCode = '"$"#,##0.00_);("$"#,##0.00)';
+  AccountingCode = '_("$"* #,##0.00_);_("$"* (#,##0.00);_("$"* "-"??_);_(@_)';
+  NumberCode = '#,##0_);(#,##0)';
+begin
+  // Excel references the built-in currency (7), accounting (44) and number (37)
+  // formats by id only, with no <numFmt> element, so the library must supply the
+  // codes. The currency and accounting codes carry quoted "$"/"-" literals, which
+  // exercise the XML quote-escaping on the re-save path.
+  const SourceFile = TPath.Combine(TPath.GetTempPath, 'excel_builtin_' + TGUID.NewGuid.ToString + '.xlsx');
+  var Zip := TZipFile.Create;
+  try
+    Zip.Open(SourceFile, zmWrite);
+    AddPart(Zip, 'xl/workbook.xml',
+      '<workbook xmlns="' + SpreadsheetNs + '" xmlns:r="' + OfficeDocRelsNs + '">' +
+      '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>');
+    AddPart(Zip, 'xl/styles.xml',
+      '<styleSheet xmlns="' + SpreadsheetNs + '">' +
+      '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
+      '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<cellXfs count="4">' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>' +
+      '<xf numFmtId="7" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/>' +
+      '<xf numFmtId="44" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/>' +
+      '<xf numFmtId="37" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/>' +
+      '</cellXfs></styleSheet>');
+    AddPart(Zip, 'xl/worksheets/sheet1.xml',
+      '<worksheet xmlns="' + SpreadsheetNs + '"><sheetData>' +
+      '<row r="1">' +
+      '<c r="A1" s="1"><v>1234.5</v></c>' +
+      '<c r="B1" s="2"><v>1234.5</v></c>' +
+      '<c r="C1" s="3"><v>1234</v></c>' +
+      '</row></sheetData></worksheet>');
+    Zip.Close;
+
+    FWorkbook.LoadFromFile(SourceFile);
+    Assert.AreEqual(CurrencyCode, FWorkbook.Sheets[0].Cell['A1'].NumberFormat, 'Built-in numFmt 7 should map to the currency format code');
+    Assert.AreEqual(AccountingCode, FWorkbook.Sheets[0].Cell['B1'].NumberFormat, 'Built-in numFmt 44 should map to the accounting format code');
+    Assert.AreEqual(NumberCode, FWorkbook.Sheets[0].Cell['C1'].NumberFormat, 'Built-in numFmt 37 should map to the number format code');
+    Assert.AreEqual(Double(1234.5), FWorkbook.Sheets[0].Cell['A1'].AsFloat, 0.001, 'Currency-formatted cell should read as a plain number, not a date');
+
+    FWorkbook.SaveToFile(FTempFile);
+
+    var Package := TOXMLPackage.Create;
+    try
+      Package.Open(FTempFile);
+      const StylesXml = Package.GetPartContent('xl/styles.xml');
+      Assert.IsTrue(Pos('&quot;$&quot;', StylesXml) > 0, 'Resaved styles.xml should XML-escape the quoted currency literal');
+    finally
+      Package.Free;
+    end;
+
+    const Workbook2 = TExcelWorkbookFactory.Create;
+    Workbook2.LoadFromFile(FTempFile);
+    Assert.AreEqual(CurrencyCode, Workbook2.Sheets[0].Cell['A1'].NumberFormat, 'Currency format should survive a resave');
+    Assert.AreEqual(AccountingCode, Workbook2.Sheets[0].Cell['B1'].NumberFormat, 'Accounting format should survive a resave');
+    Assert.AreEqual(NumberCode, Workbook2.Sheets[0].Cell['C1'].NumberFormat, 'Number format should survive a resave');
   finally
     Zip.Free;
     if TFile.Exists(SourceFile) then

@@ -2427,6 +2427,9 @@ procedure TExcelWorkbook.ParseStyles(const Xml: string);
   // section 18.8.30). Files authored by Excel reference these by id only,
   // without a <numFmt> element, so the codes have to be supplied here to
   // survive a round-trip (they are re-emitted as custom formats on save).
+  // The codes use Excel's own literal forms (the "_)" width-padding token
+  // and the quoted "$" currency literal); Excel substitutes the locale
+  // currency symbol for "$" on display, which is a rendering concern only.
   function BuiltInFormatCode(const NumFmtId: Integer): string;
   begin
     case NumFmtId of
@@ -2434,15 +2437,23 @@ procedure TExcelWorkbook.ParseStyles(const Xml: string);
       2: Result := '0.00';
       3: Result := '#,##0';
       4: Result := '#,##0.00';
+      5: Result := '"$"#,##0_);("$"#,##0)';
+      6: Result := '"$"#,##0_);[Red]("$"#,##0)';
+      7: Result := '"$"#,##0.00_);("$"#,##0.00)';
+      8: Result := '"$"#,##0.00_);[Red]("$"#,##0.00)';
       9: Result := '0%';
       10: Result := '0.00%';
       11: Result := '0.00E+00';
       12: Result := '# ?/?';
       13: Result := '# ??/??';
-      37: Result := '#,##0 ;(#,##0)';
-      38: Result := '#,##0 ;[Red](#,##0)';
-      39: Result := '#,##0.00;(#,##0.00)';
-      40: Result := '#,##0.00;[Red](#,##0.00)';
+      37: Result := '#,##0_);(#,##0)';
+      38: Result := '#,##0_);[Red](#,##0)';
+      39: Result := '#,##0.00_);(#,##0.00)';
+      40: Result := '#,##0.00_);[Red](#,##0.00)';
+      41: Result := '_(* #,##0_);_(* (#,##0);_(* "-"_);_(@_)';
+      42: Result := '_("$"* #,##0_);_("$"* (#,##0);_("$"* "-"_);_(@_)';
+      43: Result := '_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)';
+      44: Result := '_("$"* #,##0.00_);_("$"* (#,##0.00);_("$"* "-"??_);_(@_)';
       48: Result := '##0.0E+0';
       49: Result := '@';
     else
