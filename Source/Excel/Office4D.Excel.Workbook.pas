@@ -102,6 +102,7 @@ type
     FVisibility: TExcelSheetVisibility;
     FFrozenRows: Integer;
     FFrozenColumns: Integer;
+    FNotes: TDictionary<string, string>;
     FOwner: TExcelWorkbook;
 
     class function ColumnLetterToNumber(const Column: string): Integer; static;
@@ -135,6 +136,10 @@ type
     function GetFrozenRows: Integer;
     function GetFrozenColumns: Integer;
 
+    function GetNote(const Address: string): string;
+    procedure SetNote(const Address: string; const Value: string);
+    function HasNotes: Boolean;
+
     procedure ClearColumn(const Column: string);
     procedure ClearRow(const Row: Integer);
     procedure DeleteColumn(const Column: string);
@@ -154,6 +159,7 @@ type
     property Visibility: TExcelSheetVisibility read FVisibility write FVisibility;
     property FrozenRows: Integer read GetFrozenRows;
     property FrozenColumns: Integer read GetFrozenColumns;
+    property Notes: TDictionary<string, string> read FNotes;
   end;
 
   TExcelWorkbook = class(TInterfacedObject, IExcelWorkbook)
@@ -187,6 +193,7 @@ type
     procedure ParseSharedStrings(const Xml: string);
     procedure ParseStyles(const Xml: string);
     procedure ParseSheet(const Sheet: TExcelSheet; const Xml: string);
+    procedure ParseComments(const Sheet: TExcelSheet; const Xml: string);
 
     function BuildSharedStrings: TList<string>;
     function GetSharedStringIndex(const Strings: TList<string>; const Value: string): Integer;
@@ -196,6 +203,9 @@ type
     function GenerateWorkbook: string;
     function GenerateWorkbookRels: string;
     function GenerateSheet(const Sheet: TExcelSheet; const SharedStrings: TList<string>; const StyleMap: TDictionary<string, Integer>): string;
+    function GenerateComments(const Sheet: TExcelSheet): string;
+    function GenerateVmlDrawing(const Sheet: TExcelSheet): string;
+    function GenerateSheetRels(const CommentsFileIndex: Integer): string;
     function GenerateSharedStrings(const Strings: TList<string>): string;
     function GenerateStyles(const StyleMap: TDictionary<string, Integer>): string;
     function BuildStyleMap: TDictionary<string, Integer>;
@@ -771,10 +781,12 @@ begin
   FColumnWidths := TDictionary<string, Double>.Create;
   FRowHeights := TDictionary<Integer, Double>.Create;
   FMergedRanges := TList<string>.Create;
+  FNotes := TDictionary<string, string>.Create;
 end;
 
 destructor TExcelSheet.Destroy;
 begin
+  FNotes.Free;
   FMergedRanges.Free;
   FRowHeights.Free;
   FColumnWidths.Free;
@@ -871,6 +883,25 @@ begin
   Result := FFrozenColumns;
 end;
 
+function TExcelSheet.GetNote(const Address: string): string;
+begin
+  if not FNotes.TryGetValue(UpperCase(Address), Result) then
+    Result := '';
+end;
+
+procedure TExcelSheet.SetNote(const Address: string; const Value: string);
+begin
+  if Value = '' then
+    FNotes.Remove(UpperCase(Address))
+  else
+    FNotes.AddOrSetValue(UpperCase(Address), Value);
+end;
+
+function TExcelSheet.HasNotes: Boolean;
+begin
+  Result := FNotes.Count > 0;
+end;
+
 class function TExcelSheet.ColumnLetterToNumber(const Column: string): Integer;
 begin
   Result := 0;
@@ -958,21 +989,32 @@ begin
 end;
 
 procedure TExcelSheet.ClearLine(const AIsColumn: Boolean; const AIndex: Integer);
+
+  function IsOnLine(const AAddress: string): Boolean;
+  begin
+    var Col, Row: Integer;
+    ParseCellAddress(AAddress, Col, Row);
+    Result := (AIsColumn and (Col = AIndex)) or ((not AIsColumn) and (Row = AIndex));
+  end;
+
 begin
-  // Cells are stored sparse and keyed by address, so clearing a line is simply
-  // dropping the matching keys. Column widths, row heights, merges and freeze
+  // Cells and notes are stored sparse and keyed by address, so clearing a line is
+  // simply dropping the matching keys. Column widths, row heights, merges and freeze
   // panes are left intact -- this clears contents, not structure.
   var KeysToRemove := TList<string>.Create;
   try
     for var Pair in FCells do
-    begin
-      var Col, Row: Integer;
-      ParseCellAddress(Pair.Key, Col, Row);
-      if (AIsColumn and (Col = AIndex)) or ((not AIsColumn) and (Row = AIndex)) then
+      if IsOnLine(Pair.Key) then
         KeysToRemove.Add(Pair.Key);
-    end;
     for var Key in KeysToRemove do
       FCells.Remove(Key);
+
+    KeysToRemove.Clear;
+    for var Pair in FNotes do
+      if IsOnLine(Pair.Key) then
+        KeysToRemove.Add(Pair.Key);
+    for var Key in KeysToRemove do
+      FNotes.Remove(Key);
   finally
     KeysToRemove.Free;
   end;
@@ -1011,6 +1053,28 @@ begin
   end;
   FCells.Free;
   FCells := NewCells;
+
+  // 1b. Notes are keyed by address just like cells, so they shift (and drop on the
+  //     deleted line) the same way, otherwise a note would detach from its cell.
+  var NewNotes := TDictionary<string, string>.Create;
+  for var Pair in FNotes do
+  begin
+    var Col, Row: Integer;
+    ParseCellAddress(Pair.Key, Col, Row);
+    var Axis := Col;
+    if not AIsColumn then
+      Axis := Row;
+    if Axis = AIndex then
+      Continue;
+    if Axis > AIndex then
+      Dec(Axis);
+    if AIsColumn then
+      NewNotes.Add(ColumnNumberToLetters(Axis) + IntToStr(Row), Pair.Value)
+    else
+      NewNotes.Add(ColumnNumberToLetters(Col) + IntToStr(Axis), Pair.Value);
+  end;
+  FNotes.Free;
+  FNotes := NewNotes;
 
   // 2. Column widths (column delete) or row heights (row delete) shift the same way.
   if AIsColumn then
@@ -1210,6 +1274,30 @@ begin
         const SheetPath = PartSheetPrefix + IntToStr(I + 1) + PartSheetSuffix;
         if Package.PartExists(SheetPath) then
           ParseSheet(FSheets[I] as TExcelSheet, Package.GetPartContent(SheetPath));
+
+        const SheetRelsPath = 'xl/worksheets/_rels/sheet' + IntToStr(I + 1) + '.xml.rels';
+        if Package.PartExists(SheetRelsPath) then
+        begin
+          var SheetRels := TRelationships.Create;
+          try
+            SheetRels.LoadFromXml(Package.GetPartContent(SheetRelsPath));
+            const CommentsTarget = SheetRels.GetTargetByType(OfficeDocRelsNs + '/comments');
+            if CommentsTarget <> '' then
+            begin
+              // Targets are written relative to xl/worksheets/ (e.g. '../comments1.xml').
+              // This resolves that specific convention rather than implementing full OPC
+              // relative-URI resolution -- consistent with this library's other pragmatic,
+              // regex-based parsing rather than a general-purpose XML/URI toolchain.
+              var ResolvedPath := CommentsTarget;
+              if ResolvedPath.StartsWith('../') then
+                ResolvedPath := 'xl/' + Copy(ResolvedPath, 4, MaxInt);
+              if Package.PartExists(ResolvedPath) then
+                ParseComments(FSheets[I] as TExcelSheet, Package.GetPartContent(ResolvedPath));
+            end;
+          finally
+            SheetRels.Free;
+          end;
+        end;
       end;
     finally
       Rels.Free;
@@ -1257,6 +1345,26 @@ begin
         const SheetPath = PartSheetPrefix + IntToStr(I + 1) + PartSheetSuffix;
         if Package.PartExists(SheetPath) then
           ParseSheet(FSheets[I] as TExcelSheet, Package.GetPartContent(SheetPath));
+
+        const SheetRelsPath = 'xl/worksheets/_rels/sheet' + IntToStr(I + 1) + '.xml.rels';
+        if Package.PartExists(SheetRelsPath) then
+        begin
+          var SheetRels := TRelationships.Create;
+          try
+            SheetRels.LoadFromXml(Package.GetPartContent(SheetRelsPath));
+            const CommentsTarget = SheetRels.GetTargetByType(OfficeDocRelsNs + '/comments');
+            if CommentsTarget <> '' then
+            begin
+              var ResolvedPath := CommentsTarget;
+              if ResolvedPath.StartsWith('../') then
+                ResolvedPath := 'xl/' + Copy(ResolvedPath, 4, MaxInt);
+              if Package.PartExists(ResolvedPath) then
+                ParseComments(FSheets[I] as TExcelSheet, Package.GetPartContent(ResolvedPath));
+            end;
+          finally
+            SheetRels.Free;
+          end;
+        end;
       end;
     finally
       Rels.Free;
@@ -1289,10 +1397,26 @@ begin
       const WorkbookRels = TEncoding.UTF8.GetBytes(GenerateWorkbookRels);
       Zip.Add(WorkbookRels, PartWorkbookRels);
 
+      var CommentsFileIndex := 0;
       for var I := 0 to FSheets.Count - 1 do
       begin
-        const SheetXml = TEncoding.UTF8.GetBytes(GenerateSheet(FSheets[I] as TExcelSheet, SharedStrings, StyleMap));
+        var ExcelSheet := FSheets[I] as TExcelSheet;
+        const SheetXml = TEncoding.UTF8.GetBytes(GenerateSheet(ExcelSheet, SharedStrings, StyleMap));
         Zip.Add(SheetXml, PartSheetPrefix + IntToStr(I + 1) + PartSheetSuffix);
+
+        if ExcelSheet.HasNotes then
+        begin
+          Inc(CommentsFileIndex);
+
+          const CommentsXml = TEncoding.UTF8.GetBytes(GenerateComments(ExcelSheet));
+          Zip.Add(CommentsXml, 'xl/comments' + IntToStr(CommentsFileIndex) + '.xml');
+
+          const VmlXml = TEncoding.UTF8.GetBytes(GenerateVmlDrawing(ExcelSheet));
+          Zip.Add(VmlXml, 'xl/drawings/vmlDrawing' + IntToStr(CommentsFileIndex) + '.vml');
+
+          const SheetRelsXml = TEncoding.UTF8.GetBytes(GenerateSheetRels(CommentsFileIndex));
+          Zip.Add(SheetRelsXml, 'xl/worksheets/_rels/sheet' + IntToStr(I + 1) + '.xml.rels');
+        end;
       end;
 
       if SharedStrings.Count > 0 then
@@ -1335,10 +1459,26 @@ begin
       const WorkbookRels = TEncoding.UTF8.GetBytes(GenerateWorkbookRels);
       Zip.Add(WorkbookRels, PartWorkbookRels);
 
+      var CommentsFileIndex := 0;
       for var I := 0 to FSheets.Count - 1 do
       begin
-        const SheetXml = TEncoding.UTF8.GetBytes(GenerateSheet(FSheets[I] as TExcelSheet, SharedStrings, StyleMap));
+        var ExcelSheet := FSheets[I] as TExcelSheet;
+        const SheetXml = TEncoding.UTF8.GetBytes(GenerateSheet(ExcelSheet, SharedStrings, StyleMap));
         Zip.Add(SheetXml, PartSheetPrefix + IntToStr(I + 1) + PartSheetSuffix);
+
+        if ExcelSheet.HasNotes then
+        begin
+          Inc(CommentsFileIndex);
+
+          const CommentsXml = TEncoding.UTF8.GetBytes(GenerateComments(ExcelSheet));
+          Zip.Add(CommentsXml, 'xl/comments' + IntToStr(CommentsFileIndex) + '.xml');
+
+          const VmlXml = TEncoding.UTF8.GetBytes(GenerateVmlDrawing(ExcelSheet));
+          Zip.Add(VmlXml, 'xl/drawings/vmlDrawing' + IntToStr(CommentsFileIndex) + '.vml');
+
+          const SheetRelsXml = TEncoding.UTF8.GetBytes(GenerateSheetRels(CommentsFileIndex));
+          Zip.Add(SheetRelsXml, 'xl/worksheets/_rels/sheet' + IntToStr(I + 1) + '.xml.rels');
+        end;
       end;
 
       if SharedStrings.Count > 0 then
@@ -1389,9 +1529,30 @@ begin
     SB.Append('<Types xmlns="' + ContentTypesNs + '">');
     SB.Append('<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>');
     SB.Append('<Default Extension="xml" ContentType="application/xml"/>');
+
+    var HasAnyNotes := False;
+    for var Sheet in FSheets do
+      if (Sheet as TExcelSheet).HasNotes then
+        HasAnyNotes := True;
+    if HasAnyNotes then
+      SB.Append('<Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/>');
+
     SB.Append('<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>');
     for var I := 0 to FSheets.Count - 1 do
       SB.Append('<Override PartName="/xl/worksheets/sheet' + IntToStr(I + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>');
+
+    if HasAnyNotes then
+    begin
+      var CommentsFileIndex := 0;
+      for var Sheet in FSheets do
+        if (Sheet as TExcelSheet).HasNotes then
+        begin
+          Inc(CommentsFileIndex);
+          SB.Append('<Override PartName="/xl/comments' + IntToStr(CommentsFileIndex) +
+            '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>');
+        end;
+    end;
+
     SB.Append('<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>');
     SB.Append('<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>');
     SB.Append('</Types>');
@@ -1472,7 +1633,7 @@ begin
   var SB := TStringBuilder.Create;
   try
     SB.Append(XmlDeclaration);
-    SB.Append('<worksheet xmlns="' + SpreadsheetNs + '">');
+    SB.Append('<worksheet xmlns="' + SpreadsheetNs + '" xmlns:r="' + OfficeDocRelsNs + '">');
 
     const HasFrozenPanes = (Sheet.FrozenRows > 0) or (Sheet.FrozenColumns > 0);
     if HasFrozenPanes then
@@ -1668,7 +1829,110 @@ begin
       SB.Append('</mergeCells>');
     end;
 
+    // legacyDrawing must come very late in the worksheet element per the CT_Worksheet
+    // schema order (after sheetData/mergeCells, before the closing tag). Its r:id always
+    // resolves to "rId1" -- see GenerateSheetRels, where the vmlDrawing relationship is
+    // written first and the comments relationship (not referenced here at all; Excel
+    // discovers it purely via the .rels Type) second.
+    if Sheet.HasNotes then
+      SB.Append('<legacyDrawing r:id="rId1"/>');
+
     SB.Append('</worksheet>');
+    Result := SB.ToString;
+  finally
+    SB.Free;
+  end;
+end;
+
+function TExcelWorkbook.GenerateComments(const Sheet: TExcelSheet): string;
+begin
+  var SB := TStringBuilder.Create;
+  try
+    SB.Append(XmlDeclaration);
+    SB.Append('<comments xmlns="' + SpreadsheetNs + '">');
+    // A single generic author is used for every note -- per-note author names are out of
+    // scope for this plain-text-only feature.
+    SB.Append('<authors><author>Author</author></authors>');
+    SB.Append('<commentList>');
+    for var NotePair in Sheet.Notes do
+      SB.Append('<comment ref="' + NotePair.Key + '" authorId="0"><text><r><t>' +
+        TXml.Escape(NotePair.Value) + '</t></r></text></comment>');
+    SB.Append('</commentList>');
+    SB.Append('</comments>');
+    Result := SB.ToString;
+  finally
+    SB.Free;
+  end;
+end;
+
+function TExcelWorkbook.GenerateVmlDrawing(const Sheet: TExcelSheet): string;
+begin
+  var SB := TStringBuilder.Create;
+  try
+    // VML is a legacy, non-SpreadsheetML vocabulary Excel still requires for the visual
+    // note box (position/size/default-hidden state). The shapetype is defined once and
+    // shared by every note's <v:shape> via type="#_x0000_t202". Shape ids just need to be
+    // unique within this file; 1000+N avoids colliding with the shapetype's own id.
+    SB.Append('<xml xmlns:v="urn:schemas-microsoft-com:vml" ' +
+      'xmlns:o="urn:schemas-microsoft-com:office:office" ' +
+      'xmlns:x="urn:schemas-microsoft-com:office:excel">');
+    SB.Append('<o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout>');
+    SB.Append('<v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" ' +
+      'path="m,l,21600r21600,l21600,xe">' +
+      '<v:stroke joinstyle="miter"/><v:path gradientshapeok="t" o:connecttype="rect"/>' +
+      '</v:shapetype>');
+
+    var ShapeId := 1000;
+    for var NotePair in Sheet.Notes do
+    begin
+      Inc(ShapeId);
+      var Col, Row: Integer;
+      TExcelSheet.ParseCellAddress(NotePair.Key, Col, Row);
+      // x:Row/x:Column are 0-based, unlike the rest of this library's 1-based row/column
+      // convention -- ParseCellAddress returns 1-based values, so both are adjusted here.
+      const ZeroRow = Row - 1;
+      const ZeroCol = Col - 1;
+
+      SB.Append('<v:shape id="_x0000_s' + IntToStr(ShapeId) + '" type="#_x0000_t202" ' +
+        'style=''position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;' +
+        'height:59.25pt;z-index:' + IntToStr(ShapeId) + ';visibility:hidden'' ' +
+        'fillcolor="#ffffe1" o:insetmode="auto">');
+      SB.Append('<v:fill color2="#ffffe1"/><v:shadow on="t" color="black" obscured="t"/>');
+      SB.Append('<v:path o:connecttype="none"/>');
+      SB.Append('<v:textbox style=''mso-direction-alt:auto''><div style=''text-align:left''></div></v:textbox>');
+      // x:Anchor positions the note box relative to its own cell (from/to column and row
+      // with in-cell offsets), so each note sits next to its cell instead of every box
+      // landing on the same fixed margin. This mirrors Excel's default: the box starts one
+      // column to the right, spans two columns and about four rows.
+      const Anchor = Format('%d, 15, %d, 2, %d, 15, %d, 4',
+        [ZeroCol + 1, ZeroRow, ZeroCol + 3, ZeroRow + 4]);
+      SB.Append('<x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/>' +
+        '<x:Anchor>' + Anchor + '</x:Anchor>' +
+        '<x:AutoFill>False</x:AutoFill>' +
+        '<x:Row>' + IntToStr(ZeroRow) + '</x:Row>' +
+        '<x:Column>' + IntToStr(ZeroCol) + '</x:Column>' +
+        '</x:ClientData>');
+      SB.Append('</v:shape>');
+    end;
+
+    SB.Append('</xml>');
+    Result := SB.ToString;
+  finally
+    SB.Free;
+  end;
+end;
+
+function TExcelWorkbook.GenerateSheetRels(const CommentsFileIndex: Integer): string;
+begin
+  var SB := TStringBuilder.Create;
+  try
+    SB.Append(XmlDeclaration);
+    SB.Append('<Relationships xmlns="' + RelationshipsNs + '">');
+    SB.Append('<Relationship Id="rId1" Type="' + OfficeDocRelsNs + '/vmlDrawing" Target="../drawings/vmlDrawing' +
+      IntToStr(CommentsFileIndex) + '.vml"/>');
+    SB.Append('<Relationship Id="rId2" Type="' + OfficeDocRelsNs + '/comments" Target="../comments' +
+      IntToStr(CommentsFileIndex) + '.xml"/>');
+    SB.Append('</Relationships>');
     Result := SB.ToString;
   finally
     SB.Free;
@@ -2574,6 +2838,26 @@ begin
     end;
   end;
   Result := Adjusted;
+end;
+
+procedure TExcelWorkbook.ParseComments(const Sheet: TExcelSheet; const Xml: string);
+begin
+  const CommentMatches = TRegEx.Matches(Xml, '<comment\s+ref="([^"]+)"[^>]*>(.*?)</comment>', [roIgnoreCase, roSingleLine]);
+  for var Match in CommentMatches do
+  begin
+    const Address = Match.Groups[1].Value;
+    const CommentBody = Match.Groups[2].Value;
+    var Text := '';
+    // Mirrors ParseSharedStrings' <t> extraction: a note's text can be split across
+    // multiple <r><t>...</t></r> runs (e.g. if a run has different formatting), which
+    // are concatenated. Rich per-run formatting itself is not preserved -- out of scope
+    // for plain-text notes.
+    const TextMatches = TRegEx.Matches(CommentBody, '<t(?:\s[^>]*)?>([^<]*)</t>', [roIgnoreCase]);
+    for var TextMatch in TextMatches do
+      if TextMatch.Groups.Count > 1 then
+        Text := Text + TXml.Unescape(TextMatch.Groups[1].Value);
+    Sheet.SetNote(Address, Text);
+  end;
 end;
 
 procedure TExcelWorkbook.ParseSheet(const Sheet: TExcelSheet; const Xml: string);

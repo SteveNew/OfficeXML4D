@@ -115,6 +115,9 @@ type
     function GetFrozenRows: Integer;
     function GetFrozenColumns: Integer;
 
+    function GetNote(const Address: string): string;
+    procedure SetNote(const Address: string; const Value: string);
+
     procedure ClearColumn(const Column: string);
     procedure ClearRow(const Row: Integer);
     procedure DeleteColumn(const Column: string);
@@ -128,6 +131,7 @@ type
     property Visibility: TExcelSheetVisibility read GetVisibility write SetVisibility;
     property FrozenRows: Integer read GetFrozenRows;
     property FrozenColumns: Integer read GetFrozenColumns;
+    property Note[const Address: string]: string read GetNote write SetNote;
   end;
 
   IExcelWorkbook = interface
