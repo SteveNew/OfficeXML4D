@@ -39,6 +39,7 @@ type
     FVAlign: TExcelVAlign;
     FWrapText: Boolean;
     FFontColor: Cardinal;
+    FStrikeout: Boolean;
   public
     function GetAsString: string;
     procedure SetAsString(const Value: string);
@@ -57,6 +58,8 @@ type
     procedure SetItalic(const Value: Boolean);
     function GetUnderline: Boolean;
     procedure SetUnderline(const Value: Boolean);
+    function GetStrikeout: Boolean;
+    procedure SetStrikeout(const Value: Boolean);
     function GetFontName: string;
     procedure SetFontName(const Value: string);
     function GetFontSize: Double;
@@ -77,6 +80,8 @@ type
     procedure SetWrapText(const Value: Boolean);
     function GetFontColor: Cardinal;
     procedure SetFontColor(const Value: Cardinal);
+    function GetFontStyle: TExcelFontStyles;
+    procedure SetFontStyle(const Value: TExcelFontStyles);
 
     function GetIsString: Boolean;
     function HasStyle: Boolean;
@@ -93,8 +98,12 @@ type
     FRowHeights: TDictionary<Integer, Double>;
     FMergedRanges: TList<string>;
     FVisibility: TExcelSheetVisibility;
+    FFrozenRows: Integer;
+    FFrozenColumns: Integer;
 
     class function ColumnLetterToNumber(const Column: string): Integer; static;
+    class function ColumnNumberToLetters(const Column: Integer): string; static;
+    class procedure ParseCellAddress(const Address: string; out Col, Row: Integer); static;
   public
     constructor Create(const Name: string);
     destructor Destroy; override;
@@ -114,6 +123,11 @@ type
     function GetVisibility: TExcelSheetVisibility;
     procedure SetVisibility(const Value: TExcelSheetVisibility);
 
+    procedure FreezePanes(const TopLeftCell: string);
+    procedure UnfreezePanes;
+    function GetFrozenRows: Integer;
+    function GetFrozenColumns: Integer;
+
     procedure SetCellValue(const Address, Value: string; IsString: Boolean);
     procedure SetBooleanValue(const Address: string; Value: Boolean);
     procedure SetCellFormula(const Address, Formula, Value: string);
@@ -126,6 +140,8 @@ type
     property RowHeights: TDictionary<Integer, Double> read FRowHeights;
     property MergedRangesList: TList<string> read FMergedRanges;
     property Visibility: TExcelSheetVisibility read FVisibility write FVisibility;
+    property FrozenRows: Integer read GetFrozenRows;
+    property FrozenColumns: Integer read GetFrozenColumns;
   end;
 
   TExcelWorkbook = class(TInterfacedObject, IExcelWorkbook)
@@ -136,6 +152,7 @@ type
     FStyleBold: TList<Boolean>;
     FStyleItalic: TList<Boolean>;
     FStyleUnderline: TList<Boolean>;
+    FStyleStrikeout: TList<Boolean>;
     FStyleFontName: TList<string>;
     FStyleFontSize: TList<Double>;
     FStyleColors: TList<Cardinal>;
@@ -333,6 +350,16 @@ begin
   FNumberFormat := Value;
 end;
 
+function TExcelCell.GetStrikeout: Boolean;
+begin
+  Result := FStrikeout;
+end;
+
+procedure TExcelCell.SetStrikeout(const Value: Boolean);
+begin
+  FStrikeout := Value;
+end;
+
 function TExcelCell.GetItalic: Boolean;
 begin
   Result := FItalic;
@@ -381,6 +408,23 @@ end;
 procedure TExcelCell.SetFontSize(const Value: Double);
 begin
   FFontSize := Value;
+end;
+
+function TExcelCell.GetFontStyle: TExcelFontStyles;
+begin
+  Result := [];
+  if FBold then Include(Result, TExcelFontStyle.Bold);
+  if FItalic then Include(Result, TExcelFontStyle.Italic);
+  if FUnderline then Include(Result, TExcelFontStyle.Underline);
+  if FStrikeout then Include(Result, TExcelFontStyle.Strikeout);
+end;
+
+procedure TExcelCell.SetFontStyle(const Value: TExcelFontStyles);
+begin
+  FBold := TExcelFontStyle.Bold in Value;
+  FItalic := TExcelFontStyle.Italic in Value;
+  FUnderline := TExcelFontStyle.Underline in Value;
+  FStrikeout := TExcelFontStyle.Strikeout in Value;
 end;
 
 function TExcelCell.GetBorderStyle(ASides: TExcelBorderSides): TExcelBorderStyle;
@@ -445,7 +489,7 @@ end;
 
 function TExcelCell.HasStyle: Boolean;
 begin
-  const HasFont = (FBold) or (FItalic) or (FUnderline) or (FFontName <> '') or (FFontSize <> 0) or (FFontColor <> 0);
+  const HasFont = (FBold) or (FItalic) or (FUnderline) or (FFontName <> '') or (FFontSize <> 0) or (FFontColor <> 0) or (FStrikeout);
   const HasFill = (FBackgroundColor <> 0);
   const HasFormat = (FCellType = TCellType.DateTime);
   var HasBorder := False;
@@ -542,6 +586,33 @@ begin
   FVisibility := Value;
 end;
 
+procedure TExcelSheet.FreezePanes(const TopLeftCell: string);
+var
+  Col, Row: Integer;
+begin
+  ParseCellAddress(TopLeftCell, Col, Row);
+  // TopLeftCell is the first *unfrozen* (scrollable) cell -- e.g. 'C2' means columns
+  // A-B and row 1 are frozen, so the frozen counts are one less than the parsed position.
+  FFrozenColumns := Max(0, Col - 1);
+  FFrozenRows := Max(0, Row - 1);
+end;
+
+procedure TExcelSheet.UnfreezePanes;
+begin
+  FFrozenRows := 0;
+  FFrozenColumns := 0;
+end;
+
+function TExcelSheet.GetFrozenRows: Integer;
+begin
+  Result := FFrozenRows;
+end;
+
+function TExcelSheet.GetFrozenColumns: Integer;
+begin
+  Result := FFrozenColumns;
+end;
+
 class function TExcelSheet.ColumnLetterToNumber(const Column: string): Integer;
 begin
   Result := 0;
@@ -551,6 +622,35 @@ begin
     const CharVal = Ord(UpperColumn[CharIndex]) - Ord('A') + 1;
     Result := Result * 26 + CharVal;
   end;
+end;
+
+class function TExcelSheet.ColumnNumberToLetters(const Column: Integer): string;
+begin
+  Result := '';
+  var ColNum := Column;
+  while ColNum > 0 do
+  begin
+    const Remainder = (ColNum - 1) mod 26;
+    Result := Chr(Ord('A') + Remainder) + Result;
+    ColNum := (ColNum - 1) div 26;
+  end;
+end;
+
+class procedure TExcelSheet.ParseCellAddress(const Address: string; out Col, Row: Integer);
+begin
+  const UpperAddress = UpperCase(Trim(Address));
+  var ColPart := '';
+  var RowPart := '';
+  for var CharIndex := 1 to Length(UpperAddress) do
+    if CharInSet(UpperAddress[CharIndex], ['A'..'Z']) then
+      ColPart := ColPart + UpperAddress[CharIndex]
+    else
+      RowPart := RowPart + UpperAddress[CharIndex];
+
+  if (ColPart = '') or (RowPart = '') or not TryStrToInt(RowPart, Row) then
+    raise EExcelWorkbookException.CreateFmt('Invalid cell address: "%s"', [Address]);
+
+  Col := ColumnLetterToNumber(ColPart);
 end;
 
 procedure TExcelSheet.SetCellValue(const Address, Value: string; IsString: Boolean);
@@ -603,6 +703,7 @@ begin
   FStyleFontSize := TList<Double>.Create;
   FStyleColors := TList<Cardinal>.Create;
   FStyleFontColor := TList<Cardinal>.Create;
+  FStyleStrikeout := TList<Boolean>.Create;
   FStyleBorderTopStyle := TList<TExcelBorderStyle>.Create;
   FStyleBorderTopColor := TList<Cardinal>.Create;
   FStyleBorderRightStyle := TList<TExcelBorderStyle>.Create;
@@ -634,6 +735,7 @@ begin
   FStyleBorderTopColor.Free;
   FStyleBorderTopStyle.Free;
   FStyleFontColor.Free;
+  FStyleStrikeout.Free;
   FStyleColors.Free;
   FStyleFontSize.Free;
   FStyleFontName.Free;
@@ -948,6 +1050,39 @@ begin
     SB.Append(XmlDeclaration);
     SB.Append('<worksheet xmlns="' + SpreadsheetNs + '">');
 
+    const HasFrozenPanes = (Sheet.FrozenRows > 0) or (Sheet.FrozenColumns > 0);
+    if HasFrozenPanes then
+    begin
+      const TopLeftCell = TExcelSheet.ColumnNumberToLetters(Sheet.FrozenColumns + 1) + IntToStr(Sheet.FrozenRows + 1);
+      var ActivePane := 'topLeft';
+      if (Sheet.FrozenRows > 0) and (Sheet.FrozenColumns > 0) then
+        ActivePane := 'bottomRight'
+      else if Sheet.FrozenRows > 0 then
+        ActivePane := 'bottomLeft'
+      else if Sheet.FrozenColumns > 0 then
+        ActivePane := 'topRight';
+
+      SB.Append('<sheetViews><sheetView workbookViewId="0">');
+      SB.Append('<pane xSplit="' + IntToStr(Sheet.FrozenColumns) + '" ySplit="' + IntToStr(Sheet.FrozenRows) +
+        '" topLeftCell="' + TopLeftCell + '" activePane="' + ActivePane + '" state="frozen"/>');
+
+      // Excel emits one <selection> per pane that owns a selection: three for a both-axes
+      // freeze (topRight, bottomLeft, bottomRight), one for a single-axis freeze. Each
+      // pane's active cell is the top-left cell of that pane's own region.
+      if (Sheet.FrozenRows > 0) and (Sheet.FrozenColumns > 0) then
+      begin
+        const TopRightCell = TExcelSheet.ColumnNumberToLetters(Sheet.FrozenColumns + 1) + '1';
+        const BottomLeftCell = 'A' + IntToStr(Sheet.FrozenRows + 1);
+        SB.Append('<selection pane="topRight" activeCell="' + TopRightCell + '" sqref="' + TopRightCell + '"/>');
+        SB.Append('<selection pane="bottomLeft" activeCell="' + BottomLeftCell + '" sqref="' + BottomLeftCell + '"/>');
+        SB.Append('<selection pane="bottomRight" activeCell="' + TopLeftCell + '" sqref="' + TopLeftCell + '"/>');
+      end
+      else
+        SB.Append('<selection pane="' + ActivePane + '" activeCell="' + TopLeftCell + '" sqref="' + TopLeftCell + '"/>');
+
+      SB.Append('</sheetView></sheetViews>');
+    end;
+
     const HasColumnWidths = (Sheet.ColumnWidths.Count > 0);
     if HasColumnWidths then
     begin
@@ -1143,7 +1278,7 @@ begin
       DateFlag := 2
     else
       DateFlag := 1;
-  Result := Format('%d|%d|%d|%s|%d|%d|%s|%s|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d', [
+  Result := Format('%d|%d|%d|%s|%d|%d|%s|%s|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d', [
     Ord(Cell.FBold),
     Cell.FBackgroundColor,
     DateFlag,
@@ -1163,7 +1298,8 @@ begin
     Ord(Cell.FHAlign),
     Ord(Cell.FVAlign),
     Ord(Cell.FWrapText),
-    Cell.FFontColor
+    Cell.FFontColor,
+    Ord(Cell.FStrikeout)
   ]);
 end;
 
@@ -1284,9 +1420,9 @@ begin
       var FontSizeStr := '';
       if Cell.FFontSize <> 0 then
         FontSizeStr := FormatFloat('0.##', Cell.FFontSize, TFormatSettings.Invariant);
-      const FontKey = Format('%d|%d|%d|%s|%s|%d', [
-        Ord(Cell.FBold), Ord(Cell.FItalic), Ord(Cell.FUnderline), Cell.FFontName, FontSizeStr, Cell.FFontColor]);
-      if (FontKey <> '0|0|0|||0') and (not FontKeys.Contains(FontKey)) then
+      const FontKey = Format('%d|%d|%d|%s|%s|%d|%d', [
+        Ord(Cell.FBold), Ord(Cell.FItalic), Ord(Cell.FUnderline), Cell.FFontName, FontSizeStr, Cell.FFontColor, Ord(Cell.FStrikeout)]);
+      if (FontKey <> '0|0|0|||0|0') and (not FontKeys.Contains(FontKey)) then
         FontKeys.Add(FontKey);
 
       const BorderKey = Format('%d|%d|%d|%d|%d|%d|%d|%d', [
@@ -1326,10 +1462,12 @@ begin
       const Name = FontParts[3];
       const Size = FontParts[4];
       const FontColor = StrToIntDef(FontParts[5], 0);
+      const IsStrikeout = FontParts[6] = '1';
       SB.Append('<font>');
       if IsBold then SB.Append('<b/>');
       if IsItalic then SB.Append('<i/>');
       if IsUnderline then SB.Append('<u/>');
+      if IsStrikeout then SB.Append('<strike/>');
       if Size <> '' then
         SB.Append('<sz val="' + Size + '"/>')
       else
@@ -1414,13 +1552,14 @@ begin
         const CellVAlign = TExcelVAlign(StrToIntDef(Parts[17], 0));
         const CellWrapText = Parts[18] = '1';
         const CellFontColor = StrToIntDef(Parts[19], 0);
+        const CellStrikeout = Parts[20] = '1';
 
         // Must match the FontKeys population format in the collection loop above,
         // field-for-field — this 5-vs-6-field mismatch was the original FontColor bug.
-        const FontKey = Format('%d|%d|%d|%s|%s|%d', [
-          Ord(IsBold), Ord(IsItalic), Ord(IsUnderline), CellFontName, CellFontSize, CellFontColor]);
+        const FontKey = Format('%d|%d|%d|%s|%s|%d|%d', [
+          Ord(IsBold), Ord(IsItalic), Ord(IsUnderline), CellFontName, CellFontSize, CellFontColor, Ord(CellStrikeout)]);
         var FontId := 0;
-        if FontKey <> '0|0|0|||0' then
+        if FontKey <> '0|0|0|||0|0' then
           FontId := 1 + FontKeys.IndexOf(FontKey);
 
         var FillId := 0;
@@ -1656,6 +1795,7 @@ begin
   FStyleFontSize.Clear;
   FStyleColors.Clear;
   FStyleFontColor.Clear;
+  FStyleStrikeout.Clear;
   FStyleBorderTopStyle.Clear;
   FStyleBorderTopColor.Clear;
   FStyleBorderRightStyle.Clear;
@@ -1673,6 +1813,7 @@ begin
   var FontsBold := TList<Boolean>.Create;
   var FontsItalic := TList<Boolean>.Create;
   var FontsUnderline := TList<Boolean>.Create;
+  var FontsStrikeout := TList<Boolean>.Create;
   var FontsName := TList<string>.Create;
   var FontsSize := TList<Double>.Create;
   var Fills := TList<Cardinal>.Create;
@@ -1701,6 +1842,7 @@ begin
       FontsBold.Add(Pos('<b/>', FontXml) > 0);
       FontsItalic.Add(Pos('<i/>', FontXml) > 0);
       FontsUnderline.Add(Pos('<u/>', FontXml) > 0);
+      FontsStrikeout.Add(Pos('<strike/>', FontXml) > 0);
 
       const ColorMatch = TRegEx.Match(FontXml, '<color\s+rgb="FF([0-9A-Fa-f]{6})"', [roIgnoreCase]);
       if ColorMatch.Success then
@@ -1876,6 +2018,8 @@ begin
           FColor := FontsColor[FontId];
         FStyleFontColor.Add(FColor);
 
+        FStyleStrikeout.Add((FontId < FontsStrikeout.Count) and (FontsStrikeout[FontId]));
+
         if BorderId < TopStyles.Count then
           FStyleBorderTopStyle.Add(TopStyles[BorderId])
         else
@@ -1948,6 +2092,7 @@ begin
     FontsSize.Free;
     FontsName.Free;
     FontsUnderline.Free;
+    FontsStrikeout.Free;
     FontsItalic.Free;
     FontsBold.Free;
   end;
@@ -1990,15 +2135,7 @@ begin
     begin
       var ColNum := TExcelSheet.ColumnLetterToNumber(ColPart);
       Inc(ColNum, ColDelta);
-      // Convert column number back to letters
-      var ColLetters := '';
-      while ColNum > 0 do
-      begin
-        const Remainder = (ColNum - 1) mod 26;
-        ColLetters := Chr(Ord('A') + Remainder) + ColLetters;
-        ColNum := (ColNum - 1) div 26;
-      end;
-      NewColPart := ColLetters;
+      NewColPart := TExcelSheet.ColumnNumberToLetters(ColNum);
     end;
 
     if (NewColPart <> ColPart) or (NewRowPart <> RowPart) then
@@ -2016,6 +2153,28 @@ end;
 
 procedure TExcelWorkbook.ParseSheet(const Sheet: TExcelSheet; const Xml: string);
 begin
+  const PaneMatch = TRegEx.Match(Xml, '<pane\s+[^/]*/>', [roIgnoreCase]);
+  if PaneMatch.Success then
+  begin
+    const PaneXml = PaneMatch.Value;
+    // Only a frozen pane encodes xSplit/ySplit as whole row/column counts. An unfrozen
+    // "split" pane stores the split-bar position in twentieths of a point (e.g. 2160), so
+    // reading that as a frozen count would be meaningless -- skip anything whose state is
+    // not frozen or frozenSplit.
+    const StateMatch = TRegEx.Match(PaneXml, 'state="([^"]*)"', [roIgnoreCase]);
+    const IsFrozen = StateMatch.Success and
+      (SameText(StateMatch.Groups[1].Value, 'frozen') or SameText(StateMatch.Groups[1].Value, 'frozenSplit'));
+    if IsFrozen then
+    begin
+      const XSplitMatch = TRegEx.Match(PaneXml, 'xSplit="([^"]*)"', [roIgnoreCase]);
+      const YSplitMatch = TRegEx.Match(PaneXml, 'ySplit="([^"]*)"', [roIgnoreCase]);
+      if XSplitMatch.Success then
+        Sheet.FFrozenColumns := Trunc(StrToFloatDef(XSplitMatch.Groups[1].Value, 0, TFormatSettings.Invariant));
+      if YSplitMatch.Success then
+        Sheet.FFrozenRows := Trunc(StrToFloatDef(YSplitMatch.Groups[1].Value, 0, TFormatSettings.Invariant));
+    end;
+  end;
+
   const ColMatches = TRegEx.Matches(Xml, '<col\s[^/]*/>', [roIgnoreCase]);
   for var ColMatch in ColMatches do
   begin
@@ -2033,13 +2192,7 @@ begin
         const ColMax = StrToIntDef(MaxMatch.Groups[1].Value, 0);
         for var ColNum := ColMin to ColMax do
         begin
-          var ColLetters := '';
-          var N := ColNum;
-          while N > 0 do
-          begin
-            ColLetters := Chr(Ord('A') + (N - 1) mod 26) + ColLetters;
-            N := (N - 1) div 26;
-          end;
+          const ColLetters = TExcelSheet.ColumnNumberToLetters(ColNum);
           Sheet.SetColumnWidth(ColLetters, Width);
         end;
       end;
@@ -2181,6 +2334,8 @@ begin
             Cell.FBackgroundColor := FStyleColors[StyleIdx];
           if (StyleIdx < FStyleFontColor.Count) and (FStyleFontColor[StyleIdx] <> 0) then
             Cell.FFontColor := FStyleFontColor[StyleIdx];
+          if (StyleIdx < FStyleStrikeout.Count) and (FStyleStrikeout[StyleIdx]) then
+            Cell.FStrikeout := True;
           if (StyleIdx < FStyleBorderTopStyle.Count) and (FStyleBorderTopStyle[StyleIdx] <> TExcelBorderStyle.None) then
             Cell.FBorderStyle[TExcelBorderSide.Top] := FStyleBorderTopStyle[StyleIdx];
           if (StyleIdx < FStyleBorderTopColor.Count) and (FStyleBorderTopColor[StyleIdx] <> 0) then
@@ -2239,6 +2394,8 @@ begin
           Cell.FBackgroundColor := FStyleColors[StyleIdx];
         if (StyleIdx < FStyleFontColor.Count) and (FStyleFontColor[StyleIdx] <> 0) then
           Cell.FFontColor := FStyleFontColor[StyleIdx];
+        if (StyleIdx < FStyleStrikeout.Count) and (FStyleStrikeout[StyleIdx]) then
+          Cell.FStrikeout := True;
         if (StyleIdx < FStyleBorderTopStyle.Count) and (FStyleBorderTopStyle[StyleIdx] <> TExcelBorderStyle.None) then
           Cell.FBorderStyle[TExcelBorderSide.Top] := FStyleBorderTopStyle[StyleIdx];
         if (StyleIdx < FStyleBorderTopColor.Count) and (FStyleBorderTopColor[StyleIdx] <> 0) then
